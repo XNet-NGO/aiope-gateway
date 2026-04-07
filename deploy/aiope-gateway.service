@@ -1,0 +1,15 @@
+[Unit]
+Description=AIOPE Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aiope
+ExecStart=/usr/bin/java -Xmx256m -jar /opt/gateway/gateway.jar 8082 /opt/gateway/data
+WorkingDirectory=/opt/gateway
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

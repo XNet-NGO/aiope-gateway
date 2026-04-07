@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>AIOPE Gateway</title>
+<link rel="manifest" href="data:application/json,{&quot;name&quot;:&quot;AIOPE Gateway&quot;,&quot;short_name&quot;:&quot;Gateway&quot;,&quot;start_url&quot;:&quot;/portal/&quot;,&quot;display&quot;:&quot;standalone&quot;,&quot;background_color&quot;:&quot;%23121212&quot;,&quot;theme_color&quot;:&quot;%237c4dff&quot;}">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#7c4dff">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-size:14px}
+.top-bar{background:#1e1e1e;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #333;flex-wrap:wrap;gap:8px}
+.top-bar h1{font-size:18px;color:#fff}
+.top-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{padding:8px 16px;border:none;border-radius:6px;cursor:pointer;font-weight:500;font-size:13px;color:#fff}
+.btn:hover{opacity:.9}.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-start{background:#2e7d32}.btn-stop{background:#c62828}.btn-shutdown{background:#4a148c}.btn-save{background:#1565c0}.btn-test{background:#6a1b9a}.btn-load{background:#455a64}.btn-key{background:#e65100}
+.container{padding:16px;max-width:1200px;margin:0 auto}
+.card{background:#1e1e1e;border-radius:8px;padding:16px;margin-bottom:16px}
+.card-title{font-size:14px;color:#bbb;margin-bottom:12px;font-weight:500;display:flex;justify-content:space-between;align-items:center}
+.info-row{display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px}
+.info-item{display:flex;align-items:center;gap:8px}
+.info-item .label{color:#888;font-size:12px}.info-item .value{color:#7c4dff;font-weight:500}
+.provider{background:#252525;border-radius:8px;padding:12px;margin-bottom:8px;display:flex;flex-direction:column;gap:8px}
+.provider.disabled{opacity:.5}
+.provider-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.provider input[type=checkbox]{width:18px;height:18px;accent-color:#7c4dff;flex-shrink:0}
+.provider-name{font-weight:500;color:#fff;font-size:13px}
+.provider input[type=text],.provider input[type=password]{padding:6px 8px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-size:12px;font-family:monospace;width:100%;box-sizing:border-box}
+.provider-fields{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+@media(max-width:600px){.provider-fields{grid-template-columns:1fr}}
+.provider-actions{display:flex;gap:6px;flex-wrap:wrap}.provider-actions .btn{padding:6px 12px;font-size:12px}
+.result{margin-top:6px;padding:6px 8px;border-radius:4px;font-family:monospace;font-size:11px;max-height:80px;overflow:auto;white-space:pre-wrap;word-break:break-all;width:100%}
+.result.ok{background:#1b5e2033;border-left:3px solid #4caf50}.result.err{background:#b71c1c33;border-left:3px solid #f44336}
+.model-scroll{display:flex;gap:6px;overflow-x:auto;padding:6px 0;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;scrollbar-width:thin;scrollbar-color:#444 transparent;width:100%}
+.model-scroll::-webkit-scrollbar{height:4px}.model-scroll::-webkit-scrollbar-thumb{background:#555;border-radius:2px}
+.model-chip{scroll-snap-align:start;flex-shrink:0;padding:4px 10px;background:#333;border:1px solid #555;border-radius:12px;font-size:11px;cursor:pointer;white-space:nowrap;color:#ccc;transition:all .15s}
+.model-chip:hover{border-color:#7c4dff;color:#fff}
+.model-chip.sel{background:#7c4dff;border-color:#7c4dff;color:#fff}
+.log-box{background:#0d0d0d;border-radius:8px;padding:8px;height:200px;overflow-y:auto;font-family:monospace;font-size:11px;color:#aaa}
+.log-box div{padding:2px 0;border-bottom:1px solid #1a1a1a}
+.log-box .t{color:#555}.log-box .m{color:#ccc}
+.key-row{display:flex;gap:8px;align-items:center;margin-top:8px}
+.key-row input{flex:1;padding:8px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-family:monospace}
+.loading{display:inline-block;width:14px;height:14px;border:2px solid #666;border-top-color:#fff;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style></head><body>
+<div class="top-bar">
+<h1>AIOPE Gateway</h1>
+<div class="top-controls">
+<button class="btn btn-start" onclick="adminAction('start')">Start</button>
+<button class="btn btn-stop" onclick="adminAction('stop')">Stop</button>
+<button class="btn btn-shutdown" onclick="if(confirm('Shut down server process?'))adminAction('shutdown')">Shutdown</button>
+<button class="btn btn-load" onclick="adminAction('cache_clear')">Clear Cache</button>
+</div>
+</div>
+<div class="container">
+<div class="card">
+<div class="card-title">Server Info</div>
+<div class="info-row">
+<div class="info-item"><span class="label">Status:</span><span class="value" id="status">-</span></div>
+<div class="info-item"><span class="label">Port:</span><span class="value">{{PORT}}</span></div>
+<div class="info-item"><span class="label">Providers:</span><span class="value" id="count">-</span></div>
+<div class="info-item"><span class="label">Endpoint:</span><span class="value" style="font-family:monospace">http://{{HOST}}:{{PORT}}/v1</span></div>
+</div>
+<div class="key-row">
+<input type="password" id="gwKey" placeholder="Gateway API Key">
+<button class="btn btn-key" onclick="saveKey()">Set Key</button>
+<button class="btn btn-save" onclick="rotateKey()">Rotate Key</button>
+</div>
+</div>
+<div class="card">
+<div class="card-title">Users <button class="btn btn-start" style="padding:4px 12px;font-size:12px" onclick="addUser()">+ Add</button></div>
+<div id="userList"></div>
+</div>
+<div class="card">
+<div class="card-title">System Stats</div>
+<div class="info-row" id="statsRow">
+<div class="info-item"><span class="label">Uptime:</span><span class="value" id="st-uptime">-</span></div>
+<div class="info-item"><span class="label">Requests:</span><span class="value" id="st-reqs">-</span></div>
+<div class="info-item"><span class="label">Errors:</span><span class="value" id="st-errs">-</span></div>
+<div class="info-item"><span class="label">CPU Temp:</span><span class="value" id="st-temp">-</span></div>
+<div class="info-item"><span class="label">Load:</span><span class="value" id="st-load">-</span></div>
+<div class="info-item"><span class="label">RAM:</span><span class="value" id="st-ram">-</span></div>
+<div class="info-item"><span class="label">Disk:</span><span class="value" id="st-disk">-</span></div>
+<div class="info-item"><span class="label">JVM Heap:</span><span class="value" id="st-jvm">-</span></div>
+<div class="info-item"><span class="label">Cache:</span><span class="value" id="st-cache">-</span></div>
+</div>
+</div>
+<div class="card">
+<div class="card-title">Network</div>
+<div id="netInfo"></div>
+<div class="key-row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
+<input type="text" id="newHostname" placeholder="Set hostname" style="flex:1;min-width:120px">
+<button class="btn btn-save" onclick="setHostname()">Set</button>
+</div>
+<div class="key-row" style="margin-top:6px;flex-wrap:wrap;gap:6px">
+<input type="text" id="newDns" placeholder="DNS servers (comma-sep)" style="flex:1;min-width:120px">
+<button class="btn btn-save" onclick="setDns()">Set DNS</button>
+</div>
+</div>
+<div class="card">
+<div class="card-title">WiFi <button class="btn btn-load" style="padding:4px 12px;font-size:12px" onclick="scanWifi()">Scan</button></div>
+<div id="wifiStatus" style="margin-bottom:8px"></div>
+<div id="wifiNetworks"></div>
+<div id="wifiSaved" style="margin-top:8px"></div>
+</div>
+<div class="card">
+<div class="card-title">TLS Certificates <span id="certbot-ver" style="font-size:11px;color:#666"></span></div>
+<div id="certList"></div>
+<div class="key-row" style="margin-top:8px;flex-wrap:wrap">
+<input type="text" id="certDomain" placeholder="Domain or *.example.com" style="min-width:180px">
+<input type="text" id="certEmail" placeholder="Email (optional)" style="min-width:140px">
+<select id="certMethod" onchange="toggleCredField()" style="padding:8px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff">
+<option value="standalone">Standalone (HTTP)</option>
+<option value="webroot">Webroot (HTTP)</option>
+<option value="dns-cloudflare">DNS - Cloudflare</option>
+<option value="dns-route53">DNS - Route53 (AWS)</option>
+<option value="dns-google">DNS - Google Cloud</option>
+<option value="dns-digitalocean">DNS - DigitalOcean</option>
+<option value="dns-porkbun">DNS - Porkbun</option>
+<option value="dns-manual">DNS - Manual TXT</option>
+</select>
+<input type="text" id="certCreds" placeholder="Credentials file path" style="min-width:180px;display:none">
+<button class="btn btn-start" onclick="issueCert()">Issue</button>
+<button class="btn btn-load" onclick="renewCerts()">Renew All</button>
+<button class="btn btn-save" id="btnAutoRenew" onclick="toggleAutoRenew()">Auto-Renew: ?</button>
+</div>
+</div>
+<div class="card"><div class="card-title">Providers <button class="btn btn-start" style="padding:4px 12px;font-size:12px" onclick="showAddProvider()">+ Add</button></div><div id="list"></div></div>
+<div class="card">
+<div class="card-title">Request History <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="loadHistory()">Refresh</button></div>
+<div id="historyList" style="max-height:200px;overflow-y:auto;font-size:11px;font-family:monospace"></div>
+</div>
+<div class="card">
+<div class="card-title">Webhooks</div>
+<div class="key-row" style="flex-wrap:wrap;gap:6px">
+<input type="text" id="webhookUrl" placeholder="Webhook URL (e.g. https://hooks.slack.com/...)" style="flex:1;min-width:200px">
+<button class="btn btn-save" onclick="saveWebhook()">Save</button>
+<button class="btn btn-test" onclick="testWebhook()">Test</button>
+</div>
+</div>
+<div class="card">
+<div class="card-title">Backup</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<a href="/api/backup/export" class="btn btn-load" style="text-decoration:none">Export Backup</a>
+<label class="btn btn-key" style="cursor:pointer">Import Backup<input type="file" id="backupFile" style="display:none" onchange="importBackup()"></label>
+</div>
+</div>
+<div class="card">
+<div class="card-title">Audit Log <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="loadAudit()">Refresh</button></div>
+<div id="auditList" style="max-height:200px;overflow-y:auto;font-size:11px;font-family:monospace"></div>
+</div>
+<div class="card">
+<div class="card-title">Server Log <button class="btn btn-stop" style="padding:4px 8px;font-size:11px" onclick="document.getElementById('logBox').innerHTML=''">Clear</button></div>
+<div class="log-box" id="logBox"></div>
+</div>
+<div class="card">
+<div class="card-title">Files</div>
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
+<select id="fileRoot" onchange="fileBrowse(this.value)" style="padding:6px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-size:12px">
+<option value="/opt/gateway/data">Gateway Data</option>
+<option value="/etc/letsencrypt">Certs</option>
+<option value="/etc">System Config</option>
+<option value="/home">Home</option>
+<option value="/tmp">Temp</option>
+</select>
+<span id="filePath" style="font-family:monospace;font-size:11px;color:#888;flex:1"></span>
+<button class="btn btn-shutdown" style="padding:4px 10px;font-size:11px" onclick="fileBack()">Back</button>
+<button class="btn btn-load" style="padding:4px 10px;font-size:11px" onclick="fileBrowse(fileCurrentPath)">Refresh</button>
+<button class="btn btn-start" style="padding:4px 10px;font-size:11px" onclick="fileNew()">New File</button>
+<button class="btn btn-save" style="padding:4px 10px;font-size:11px" onclick="fileMkdir()">New Dir</button>
+<label class="btn btn-key" style="padding:4px 10px;font-size:11px;cursor:pointer">Upload<input type="file" id="fileUpload" style="display:none" multiple onchange="fileDoUpload()"></label>
+</div>
+<div id="fileList" style="max-height:300px;overflow-y:auto"></div>
+<div id="fileEditor" style="display:none;margin-top:8px">
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+<span id="fileEditorPath" style="font-family:monospace;font-size:11px;color:#888;flex:1"></span>
+<button class="btn btn-save" style="padding:4px 10px;font-size:11px" onclick="fileSave()">Save</button>
+<button class="btn btn-stop" style="padding:4px 10px;font-size:11px" onclick="fileCloseEditor()">Close</button>
+</div>
+<textarea id="fileContent" style="width:100%;height:200px;background:#0d0d0d;color:#e0e0e0;border:1px solid #333;border-radius:4px;padding:8px;font-family:monospace;font-size:12px;resize:vertical;box-sizing:border-box"></textarea>
+</div>
+</div>
+<div class="card">
+<div class="card-title">Shell <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="toggleShell()">Toggle</button></div>
+<iframe id="shellFrame" src="" style="width:100%;height:400px;border:1px solid #333;border-radius:6px;background:#000;display:none"></iframe>
+</div>
+</div>
+<script>
+var providers=[],models={},lastLogId=-1;
+function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/"/g,'&amp;quot;')}
+function loadWifi(){fetch('/api/wifi').then(function(r){return r.json()}).then(function(d){
+var h='';(d.active||[]).forEach(function(a){h+='<div class="info-row"><div class="info-item"><span class="label">Connected:</span><span class="value" style="color:#4caf50">'+a.name+'</span></div><div class="info-item"><span class="label">Device:</span><span class="value">'+a.device+'</span></div><button class="btn btn-stop" style="padding:3px 8px;font-size:11px" onclick="wifiDisconnect(\''+a.device+'\')">Disconnect</button></div>'});
+if(!h)h='<div style="color:#888;font-size:12px">Not connected</div>';
+document.getElementById('wifiStatus').innerHTML=h;
+loadWifiSaved()}).catch(function(){})}
+function scanWifi(){document.getElementById('wifiNetworks').innerHTML='<div style="color:#888;font-size:12px">Scanning...</div>';fetch('/api/wifi/scan').then(function(r){return r.json()}).then(function(d){
+var h='';(d.networks||[]).forEach(function(n){
+var bars=n.signal>75?'||||':n.signal>50?'||| ':n.signal>25?'||  ':'|   ';
+h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #2a2a2a">';
+h+='<span style="font-family:monospace;color:#4caf50;font-size:11px">'+bars+'</span>';
+h+='<span style="color:#fff;flex:1">'+n.ssid+'</span>';
+h+='<span style="color:#888;font-size:11px">'+n.signal+'% '+n.security+'</span>';
+h+='<button class="btn btn-start" style="padding:3px 10px;font-size:11px" onclick="wifiConnect(\''+n.ssid.replace(/'/g,"\\'")+'\',\''+n.security+'\')">Connect</button>';
+h+='</div>'});
+if(!h)h='<div style="color:#888;font-size:12px">No networks found</div>';
+document.getElementById('wifiNetworks').innerHTML=h}).catch(function(e){document.getElementById('wifiNetworks').innerHTML='<div style="color:#f44336;font-size:12px">Scan failed</div>'})}
+function wifiConnect(ssid,security){var pw='';if(security&&security!=='--'&&security!==''){pw=prompt('Password for '+ssid+':');if(pw===null)return}fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:ssid,password:pw})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadWifi()})}
+function wifiDisconnect(dev){fetch('/api/wifi/disconnect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:dev})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadWifi()})}
+function wifiForget(name){if(!confirm('Forget network "'+name+'"?'))return;fetch('/api/wifi/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadWifiSaved()})}
+function loadWifiSaved(){fetch('/api/wifi/saved').then(function(r){return r.json()}).then(function(d){
+var h='';if(d.saved&&d.saved.length>0){h='<div style="font-size:11px;color:#888;margin-bottom:4px">Saved networks:</div>';d.saved.forEach(function(s){h+='<span style="display:inline-flex;align-items:center;gap:4px;background:#333;border-radius:12px;padding:2px 10px;margin:2px;font-size:11px;color:#ccc">'+s.name+' <span style="cursor:pointer;color:#f44336" onclick="wifiForget(\''+s.name.replace(/'/g,"\\'")+'\')">x</span></span>'})}
+document.getElementById('wifiSaved').innerHTML=h}).catch(function(){})}
+var fileCurrentPath='/opt/gateway/data';var fileParentPath='/opt/gateway';
+function fileBack(){if(fileParentPath)fileBrowse(fileParentPath)}
+function fileBrowse(p){fileCurrentPath=p;document.getElementById('filePath').textContent=p;
+fetch('/api/files/ls?path='+encodeURIComponent(p)).then(function(r){return r.json()}).then(function(d){
+fileParentPath=d.parent||'';
+var h='';
+if(d.parent&&d.path!==d.parent){h+='<div style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #222" onclick="fileBrowse(\''+d.parent.replace(/'/g,"\\'")+'\')">..</div>'}
+(d.entries||[]).forEach(function(e){
+var sz=e.dir?'':e.size>1024?(e.size/1024|0)+'K':e.size+'B';
+h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid #222;font-size:12px">';
+if(e.dir){h+='<span style="color:#7c4dff;cursor:pointer;flex:1" onclick="fileBrowse(\''+e.path.replace(/'/g,"\\'")+'\')">'+e.name+'/</span>'}
+else{h+='<span style="color:#ccc;cursor:pointer;flex:1" onclick="fileOpen(\''+e.path.replace(/'/g,"\\'")+'\')">'+e.name+'</span>'}
+h+='<span style="color:#666;font-size:11px;min-width:50px;text-align:right">'+sz+'</span>';
+h+='<a href="/api/files/download?path='+encodeURIComponent(e.path)+'" style="color:#4caf50;font-size:11px;text-decoration:none">dl</a>';
+h+='<span style="color:#f44336;font-size:11px;cursor:pointer" onclick="fileDelete(\''+e.path.replace(/'/g,"\\'")+'\',\''+e.name.replace(/'/g,"\\'")+'\')">x</span>';
+h+='</div>'});
+if(!d.entries||d.entries.length===0)h+='<div style="color:#666;font-size:12px;padding:8px">Empty</div>';
+document.getElementById('fileList').innerHTML=h}).catch(function(e){document.getElementById('fileList').innerHTML='<div style="color:#f44336;padding:8px">'+e.message+'</div>'})}
+function fileOpen(p){fetch('/api/files/read?path='+encodeURIComponent(p)).then(function(r){return r.json()}).then(function(d){
+if(d.error){alert(d.error.message);return}
+document.getElementById('fileEditor').style.display='';
+document.getElementById('fileEditorPath').textContent=d.path;
+document.getElementById('fileContent').value=d.content})}
+function fileSave(){var p=document.getElementById('fileEditorPath').textContent;var c=document.getElementById('fileContent').value;
+fetch('/api/files/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p,content:c})}).then(function(r){return r.json()}).then(function(d){if(d.status==='ok')alert('Saved');else alert(d.error?.message||'Error');fileBrowse(fileCurrentPath)})}
+function fileCloseEditor(){document.getElementById('fileEditor').style.display='none'}
+function fileDelete(p,name){if(!confirm('Delete '+name+'?'))return;fetch('/api/files/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})}).then(function(){fileBrowse(fileCurrentPath)})}
+function fileNew(){var name=prompt('File name:');if(!name)return;var p=fileCurrentPath+'/'+name;
+fetch('/api/files/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p,content:''})}).then(function(){fileBrowse(fileCurrentPath);fileOpen(p)})}
+function fileMkdir(){var name=prompt('Directory name:');if(!name)return;
+fetch('/api/files/mkdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:fileCurrentPath+'/'+name})}).then(function(){fileBrowse(fileCurrentPath)})}
+function fileDoUpload(){var input=document.getElementById('fileUpload');if(!input.files.length)return;var fd=new FormData();for(var i=0;i<input.files.length;i++)fd.append('file'+i,input.files[i]);
+fetch('/api/files/upload?path='+encodeURIComponent(fileCurrentPath),{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(){input.value='';fileBrowse(fileCurrentPath)})}
+function toggleShell(){var f=document.getElementById('shellFrame');if(f.style.display==='none'){f.src='http://'+location.hostname+':7681';f.style.display=''}else{f.style.display='none';f.src=''}}
+function rotateKey(){if(!confirm('Generate new API key? Old key will stop working.'))return;var k=crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2);fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})}).then(function(){document.getElementById('gwKey').value=k;alert('New key: '+k+'\n\nSave this! You will need it to log in.');loadConfig()})}
+function loadUsers(){fetch('/api/users').then(function(r){return r.json()}).then(function(d){
+var h='';(d.users||[]).forEach(function(u){
+h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #222;font-size:12px">';
+h+='<span style="color:#fff;min-width:80px">'+u.name+'</span>';
+h+='<span style="color:#888;font-size:11px">'+u.role+'</span>';
+h+='<span style="color:#666;font-family:monospace;font-size:11px;flex:1">'+u.apiKey+'</span>';
+h+='<span style="color:#f44336;font-size:11px;cursor:pointer" onclick="deleteUser(\''+u.name+'\')">x</span></div>'});
+if(!h)h='<div style="color:#666;font-size:12px">No additional users. Admin uses the gateway API key.</div>';
+document.getElementById('userList').innerHTML=h}).catch(function(){})}
+function addUser(){var name=prompt('Username:');if(!name)return;fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(r){return r.json()}).then(function(d){if(d.apiKey)alert('User created. API key: '+d.apiKey);loadUsers()})}
+function deleteUser(name){if(!confirm('Delete user '+name+'?'))return;fetch('/api/users/'+name,{method:'DELETE'}).then(function(){loadUsers()})}
+function loadHistory(){fetch('/api/history').then(function(r){return r.json()}).then(function(d){
+var h='';(d.requests||[]).forEach(function(r){
+var color=r.status<300?'#4caf50':r.status<500?'#ff9800':'#f44336';
+var t=new Date(r.ts).toTimeString().split(' ')[0];
+h+='<div style="padding:2px 0;border-bottom:1px solid #1a1a1a"><span style="color:#555">'+t+'</span> <span style="color:'+color+'">'+r.status+'</span> <span style="color:#ccc">'+r.endpoint+'</span> <span style="color:#888">'+r.latencyMs+'ms</span> <span style="color:#555">'+r.user+'</span></div>'});
+if(!h)h='<div style="color:#666">No requests yet</div>';
+document.getElementById('historyList').innerHTML=h}).catch(function(){})}
+function loadAudit(){fetch('/api/audit').then(function(r){return r.json()}).then(function(d){
+var h='';(d.entries||[]).forEach(function(e){
+var t=new Date(e.ts).toTimeString().split(' ')[0];
+h+='<div style="padding:2px 0;border-bottom:1px solid #1a1a1a"><span style="color:#555">'+t+'</span> <span style="color:#7c4dff">'+e.user+'</span> <span style="color:#ccc">'+e.action+'</span> <span style="color:#888">'+e.detail+'</span></div>'});
+if(!h)h='<div style="color:#666">No audit entries</div>';
+document.getElementById('auditList').innerHTML=h}).catch(function(){})}
+function saveWebhook(){var u=document.getElementById('webhookUrl').value;fetch('/api/webhooks',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}).then(function(){alert('Webhook saved')})}
+function testWebhook(){fetch('/api/webhooks',{method:'POST'}).then(function(r){return r.json()}).then(function(d){alert(d.message||'Sent')})}
+function loadWebhook(){fetch('/api/webhooks').then(function(r){return r.json()}).then(function(d){document.getElementById('webhookUrl').value=d.url||''}).catch(function(){})}
+function importBackup(){var f=document.getElementById('backupFile').files[0];if(!f)return;if(!confirm('Restore backup? This will overwrite current config.'))return;fetch('/api/backup/import',{method:'POST',body:f}).then(function(r){return r.json()}).then(function(d){alert(d.status==='ok'?'Backup restored':'Restore failed');location.reload()})}
+function init(){loadProviders();loadConfig();loadNetwork();loadWifi();loadCerts();loadUsers();loadHistory();loadAudit();loadWebhook();fileBrowse('/opt/gateway/data');refreshHealth();refreshStats();setInterval(refreshHealth,3000);setInterval(refreshStats,5000);setInterval(pollLogs,2000);pollLogs()}
+function refreshHealth(){fetch('/health').then(function(r){return r.json()}).then(function(d){document.getElementById('status').textContent=d.blocked?'Blocked':'Running';document.getElementById('status').style.color=d.blocked?'#f44336':'#4caf50';document.getElementById('count').textContent=d.providers})}
+function refreshStats(){fetch('/api/stats').then(function(r){return r.json()}).then(function(d){
+document.getElementById('st-uptime').textContent=d.uptime||'-';
+document.getElementById('st-reqs').textContent=d.requests||0;
+document.getElementById('st-errs').textContent=d.errors||0;
+document.getElementById('st-temp').textContent=d.cpuTempC>=0?d.cpuTempC+'C':'n/a';
+document.getElementById('st-load').textContent=d.loadAvg||'-';
+document.getElementById('st-ram').textContent=d.memUsedMB+'/'+d.memTotalMB+' MB';
+document.getElementById('st-disk').textContent=d.diskFreeGB+'/'+d.diskTotalGB+' GB free';
+document.getElementById('st-jvm').textContent=d.jvmHeapMB+'/'+d.jvmMaxMB+' MB';
+document.getElementById('st-cache').textContent=(d.cacheEnabled?'ON':'OFF')+' '+d.cacheSize+' entries, '+d.cacheHits+' hits / '+d.cacheMisses+' misses'
+}).catch(function(){})}
+function loadNetwork(){fetch('/api/network').then(function(r){return r.json()}).then(function(d){
+var h='<div class="info-row"><div class="info-item"><span class="label">Hostname:</span><span class="value">'+d.hostname+'</span></div>';
+h+='<div class="info-item"><span class="label">Gateway:</span><span class="value">'+d.gateway+'</span></div>';
+h+='<div class="info-item"><span class="label">DNS:</span><span class="value">'+(d.dns||[]).join(', ')+'</span></div></div>';
+(d.interfaces||[]).forEach(function(i){h+='<div class="info-row"><div class="info-item"><span class="label">'+i.name+':</span><span class="value">'+(i.addresses||[]).join(', ')+'</span></div><div class="info-item"><span class="label">MAC:</span><span class="value">'+i.mac+'</span></div></div>'});
+document.getElementById('netInfo').innerHTML=h}).catch(function(){})}
+function setHostname(){var n=document.getElementById('newHostname').value;if(!n)return;fetch('/api/network/hostname',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hostname:n})}).then(function(r){return r.json()}).then(function(d){alert(d.message);loadNetwork()})}
+function setDns(){var s=document.getElementById('newDns').value;if(!s)return;var servers=s.split(',').map(function(x){return x.trim()}).filter(function(x){return x});fetch('/api/network/dns',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({servers:servers})}).then(function(r){return r.json()}).then(function(){alert('DNS updated');loadNetwork()})}
+var autoRenewOn=false;
+function loadCerts(){fetch('/api/certs').then(function(r){return r.json()}).then(function(d){
+var h='';(d.certs||[]).forEach(function(c){
+var color=c.status==='valid'?'#4caf50':c.status==='expiring'?'#ff9800':'#f44336';
+h+='<div style="background:#1a1a1a;border-radius:6px;padding:8px 12px;margin-bottom:6px;border-left:3px solid '+color+'">';
+h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
+h+='<span style="color:#fff;font-weight:500">'+c.domain+'</span>';
+h+='<span style="font-size:11px;color:#888">'+(c.daysRemaining?c.daysRemaining+'d remaining':'')+'</span>';
+h+='<div style="display:flex;gap:4px">';
+h+='<button class="btn btn-stop" style="padding:3px 8px;font-size:11px" onclick="revokeCert(\''+c.domain+'\')">Revoke</button>';
+h+='<button class="btn btn-shutdown" style="padding:3px 8px;font-size:11px" onclick="deleteCert(\''+c.domain+'\')">Delete</button>';
+h+='</div></div>';
+h+='<div style="font-size:11px;color:#888;margin-top:4px">';
+if(c.notAfter)h+='Expires: '+c.notAfter+'<br>';
+if(c.issuer)h+='Issuer: '+c.issuer+'<br>';
+if(c.fingerprint)h+='Fingerprint: '+c.fingerprint;
+h+='</div></div>'});
+if(!h)h='<div style="color:#888;font-size:12px">No certificates found</div>';
+document.getElementById('certList').innerHTML=h}).catch(function(){});
+fetch('/api/certs/status').then(function(r){return r.json()}).then(function(d){
+document.getElementById('certbot-ver').textContent=d.certbotInstalled?d.certbotVersion:'certbot not installed';
+autoRenewOn=d.autoRenewEnabled;
+document.getElementById('btnAutoRenew').textContent='Auto-Renew: '+(autoRenewOn?'ON':'OFF');
+document.getElementById('btnAutoRenew').className='btn '+(autoRenewOn?'btn-start':'btn-stop')
+}).catch(function(){})}
+function toggleCredField(){var m=document.getElementById('certMethod').value;var needsCreds=m==='dns-cloudflare'||m==='dns-google'||m==='dns-digitalocean'||m==='dns-porkbun';document.getElementById('certCreds').style.display=needsCreds?'':'none'}
+function issueCert(){var d=document.getElementById('certDomain').value;if(!d){alert('Enter a domain');return}var e=document.getElementById('certEmail').value;var m=document.getElementById('certMethod').value;var c=document.getElementById('certCreds').value;var body={domain:d,method:m};if(e)body.email=e;if(c)body.credentials=c;fetch('/api/certs/issue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+function renewCerts(){fetch('/api/certs/renew',{method:'POST'}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+function revokeCert(domain){if(!confirm('Revoke cert for '+domain+'?'))return;fetch('/api/certs/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+function deleteCert(domain){if(!confirm('Delete cert for '+domain+'? This cannot be undone.'))return;fetch('/api/certs/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+function toggleAutoRenew(){fetch('/api/certs/autorenew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable:!autoRenewOn})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+function loadConfig(){fetch('/api/config').then(function(r){return r.json()}).then(function(d){document.getElementById('gwKey').value=d.apiKey||''})}
+function saveKey(){var k=document.getElementById('gwKey').value;fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})}).then(function(){alert('API key updated')})}
+function adminAction(a){fetch('/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})}).then(function(){refreshHealth()})}
+function loadProviders(){fetch('/api/config/providers').then(function(r){return r.json()}).then(function(d){providers=d;render();providers.forEach(function(p){if(p.name.indexOf('/')>=0)return;if(p.cachedModels&&p.cachedModels.length>0){models[p.name]=p.cachedModels;renderModelScroll(p.name)}})})}
+function render(){
+var c=document.getElementById('list');c.innerHTML='';
+providers.forEach(function(p){
+if(p.name.indexOf('/')>=0)return;
+var div=document.createElement('div');div.className='provider'+(p.enabled?'':' disabled');div.id='p-'+p.name;
+div.innerHTML='<div class="provider-row"><input type="checkbox" '+(p.enabled?'checked':'')+' onchange="toggle(\''+p.name+'\',this.checked)">'
++'<div class="provider-name">'+esc(p.name)+'</div>'
++'<div class="provider-actions">'
++'<button class="btn btn-load" onclick="loadModels(\''+p.name+'\',event)">Load</button>'
++'<button class="btn btn-test" onclick="testProvider(\''+p.name+'\',event)">Test</button>'
++'<button class="btn btn-save" onclick="saveProvider(\''+p.name+'\')">Save</button>'
++'<button class="btn btn-stop" style="padding:6px 10px;font-size:12px" onclick="deleteProvider(\''+p.name+'\')">X</button>'
++'</div></div>'
++'<div class="provider-fields">'
++'<input type="text" id="base-'+p.name+'" value="'+esc(p.apiBase||'')+'" placeholder="API Base URL">'
++'<input type="text" id="path-'+p.name+'" value="'+esc(p.path||'/chat/completions')+'" placeholder="Path override" style="color:#888">'
++'<select onchange="document.getElementById(\'path-'+p.name+'\').value=this.value" style="padding:6px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#888;font-size:11px"><option value="">--</option><option value="/chat/completions">/chat/completions</option><option value="/completions">/completions</option><option value="/embeddings">/embeddings</option><option value="/rerank">/rerank</option><option value="/audio/speech">/audio/speech</option><option value="/audio/transcriptions">/audio/transcriptions</option><option value="/audio/translations">/audio/translations</option><option value="/images/generations">/images/generations</option><option value="/images/edits">/images/edits</option><option value="/images/variations">/images/variations</option><option value="/moderations">/moderations</option><option value="/responses">/responses</option></select>'
++'<input type="password" id="key-'+p.name+'" value="" placeholder="API Key'+(p.apiKey==='***set***'?' (set)':'')+'">'
++'</div>';
+c.appendChild(div);
+if(models[p.name]&&models[p.name].length>0){renderModelScroll(p.name)}
+})}
+function renderModelScroll(name){
+var parent=document.getElementById('p-'+name);
+var old=document.getElementById('ms-'+name);if(old)old.remove();
+var wrap=document.createElement('div');wrap.id='ms-'+name;wrap.style.width='100%';
+
+// Get current enabled models for this provider (sub-providers only)
+var enabled=[];
+providers.forEach(function(p){if(p.name.startsWith(name+'/'))enabled.push(p.model)});
+// If no sub-providers, show parent's model as the only enabled one
+if(enabled.length===0){var pm=providers.find(function(p){return p.name===name});if(pm&&pm.model)enabled.push(pm.model)}
+
+// Available models row (scrollable dial)
+var label1=document.createElement('div');label1.style.cssText='font-size:10px;color:#666;margin:4px 0 2px';label1.textContent='Available (click to enable):';
+var avail=document.createElement('div');avail.className='model-scroll';
+models[name].forEach(function(m){
+var chip=document.createElement('span');chip.className='model-chip'+(enabled.indexOf(m)>=0?' sel':'');chip.textContent=m;
+chip.onclick=function(){
+if(chip.className.indexOf('sel')>=0)return;
+chip.className='model-chip sel';
+addSubModel(name,m)};
+avail.appendChild(chip)});
+
+// Enabled models row (scrollable dial with X to remove)
+var label2=document.createElement('div');label2.style.cssText='font-size:10px;color:#666;margin:6px 0 2px';label2.textContent='Enabled ('+enabled.length+'): '+enabled.join(', ');
+var active=document.createElement('div');active.className='model-scroll';active.id='active-'+name;
+renderActiveModels(name,active,enabled);
+
+wrap.appendChild(label1);wrap.appendChild(avail);wrap.appendChild(label2);wrap.appendChild(active);
+parent.appendChild(wrap)}
+
+function renderActiveModels(name,container,enabled){
+container.innerHTML='';
+enabled.forEach(function(m){
+var chip=document.createElement('span');chip.className='model-chip sel';chip.style.display='inline-flex';chip.style.alignItems='center';chip.style.gap='4px';
+var txt=document.createElement('span');txt.textContent=m;
+txt.style.cursor='pointer';
+txt.onclick=function(){document.getElementById('model-'+name).value=m};
+var x=document.createElement('span');x.textContent='x';x.style.cssText='color:#f44336;cursor:pointer;font-weight:bold;margin-left:2px';
+x.onclick=function(){removeSubModel(name,m)};
+chip.appendChild(txt);chip.appendChild(x);
+container.appendChild(chip)});
+if(enabled.length===0){var empty=document.createElement('span');empty.style.cssText='color:#666;font-size:11px';empty.textContent='No models enabled';container.appendChild(empty)}}
+
+function addSubModel(name,modelId){
+// If parent still has a model and no sub-providers exist yet, migrate parent's model to a sub-provider first
+var hasSubs=providers.some(function(p){return p.name.startsWith(name+'/')});
+var parent=providers.find(function(p){return p.name===name});
+var chain=Promise.resolve();
+if(!hasSubs&&parent&&parent.model&&parent.model!==modelId){
+chain=fetch('/api/config/providers/'+name+'/models/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:parent.model})}).then(function(r){return r.json()})}
+chain.then(function(){
+return fetch('/api/config/providers/'+name+'/models/add',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:modelId})})
+}).then(function(r){return r.json()}).then(function(){loadProviders()}).catch(function(e){alert(e.message)})}
+
+function removeSubModel(name,modelId){
+fetch('/api/config/providers/'+name+'/models/remove',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:modelId})}).then(function(r){return r.json()}).then(function(){loadProviders()}).catch(function(e){alert(e.message)})}
+function toggle(name,on){fetch('/api/config/providers/'+name,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:on})}).then(function(){loadProviders()})}
+function saveProvider(name){
+var key=document.getElementById('key-'+name).value;
+var base=document.getElementById('base-'+name).value;
+var pth=document.getElementById('path-'+name).value;
+var data={apiBase:base,path:pth};if(key)data.apiKey=key;
+fetch('/api/config/providers/'+name,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(function(r){return r.json()}).then(function(d){showResult(name,d.message||d.error,!d.error);loadProviders()})
+}
+function testProvider(name,ev){
+var btn=ev.target;btn.innerHTML='<span class="loading"></span>';btn.disabled=true;
+var key=document.getElementById('key-'+name).value;
+var base=document.getElementById('base-'+name).value;
+var path=document.getElementById('path-'+name).value||'/chat/completions';
+var saveData={};if(key)saveData.apiKey=key;if(base)saveData.apiBase=base;if(path)saveData.path=path;
+var doSave=Object.keys(saveData).length>0?fetch('/api/config/providers/'+name,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(saveData)}):Promise.resolve();
+doSave.then(function(){return fetch('/api/config/providers').then(function(r){return r.json()})}).then(function(updated){
+providers=updated;var p=providers.find(function(x){return x.name===name});
+var testModel='';
+if(p){
+if(p.model)testModel=p.displayId||p.name+'/'+p.model;
+else{var sub=providers.find(function(s){return s.name.startsWith(name+'/')&&s.model});if(sub)testModel=sub.displayId||sub.name}
+}
+if(!testModel){btn.innerHTML='Test';btn.disabled=false;showResult(name,'No model selected',false);return}
+var endpoint='/v1'+path;
+var body;
+if(path==='/embeddings'){body=JSON.stringify({model:testModel,input:'hello'})}
+else if(path==='/rerank'){body=JSON.stringify({model:testModel,query:'hello',documents:['hi','bye']})}
+else if(path==='/audio/speech'){body=JSON.stringify({model:testModel,input:'hello',voice:'alloy'})}
+else if(path==='/images/generations'){body=JSON.stringify({model:testModel,prompt:'a red dot',size:'256x256',n:1})}
+else if(path==='/moderations'){body=JSON.stringify({model:testModel,input:'hello'})}
+else if(path==='/completions'){body=JSON.stringify({model:testModel,prompt:'hi',max_tokens:10})}
+else{body=JSON.stringify({model:testModel,messages:[{role:'user',content:'hi'}],max_tokens:10})}
+return fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:body})
+}).then(function(r){
+var ct=r.headers.get('content-type')||'';
+if(ct.indexOf('audio')>=0||ct.indexOf('octet')>=0){return r.blob().then(function(b){return{_blob:true,size:b.size,type:b.type}})}
+return r.json()
+}).then(function(d){
+btn.innerHTML='Test';btn.disabled=false;
+if(d._blob){showResult(name,'OK - received '+d.type+' ('+d.size+' bytes)',true)}
+else if(d.error){showResult(name,(d.error.message||JSON.stringify(d.error)),false)}
+else if(d.choices&&d.choices[0]){var c=d.choices[0];showResult(name,'OK - '+(c.message?c.message.content:c.text||'response received'),true)}
+else if(d.data&&d.data[0]){showResult(name,'OK - '+JSON.stringify(d.data[0]).substring(0,100),true)}
+else if(d.results){showResult(name,'OK - '+d.results.length+' results',true)}
+else{showResult(name,'OK - '+JSON.stringify(d).substring(0,120),true)}
+}).catch(function(e){btn.innerHTML='Test';btn.disabled=false;showResult(name,e.message,false)})
+}
+function loadModels(name,ev){
+var btn=ev.target;btn.innerHTML='<span class="loading"></span>';btn.disabled=true;
+var key=document.getElementById('key-'+name).value;
+var base=document.getElementById('base-'+name).value;
+var saveData={};if(key)saveData.apiKey=key;if(base)saveData.apiBase=base;
+var doSave=Object.keys(saveData).length>0?fetch('/api/config/providers/'+name,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(saveData)}):Promise.resolve();
+doSave.then(function(){
+return fetch('/api/config/loadmodels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:name})})
+}).then(function(r){return r.json()}).then(function(d){
+btn.innerHTML='Load';btn.disabled=false;
+if(d.error){showResult(name,'Load failed: '+d.error,false)}
+else if(d.models&&d.models.length>0){models[name]=d.models;renderModelScroll(name);showResult(name,'Loaded '+d.models.length+' models',true)}
+else showResult(name,'No models found',false)
+}).catch(function(e){btn.innerHTML='Load';btn.disabled=false;showResult(name,e.message,false)})
+}
+function showResult(name,msg,ok){
+var el=document.getElementById('result-'+name);
+if(!el){el=document.createElement('div');el.id='result-'+name;document.getElementById('p-'+name).appendChild(el)}
+el.className='result '+(ok?'ok':'err');el.textContent=msg}
+function pollLogs(){
+fetch('/api/logs?after='+lastLogId).then(function(r){return r.json()}).then(function(entries){
+if(!entries||!entries.length)return;
+var box=document.getElementById('logBox');
+entries.forEach(function(e){
+lastLogId=Math.max(lastLogId,e.id);
+var d=document.createElement('div');
+var t=new Date(e.t);
+d.innerHTML='<span class="t">'+t.toTimeString().split(' ')[0]+'</span> <span class="m">'+e.m+'</span>';
+box.appendChild(d)});
+box.scrollTop=box.scrollHeight})}
+function deleteProvider(name){if(!confirm('Remove provider "'+name+'"?'))return;fetch('/api/config/providers/'+name,{method:'DELETE'}).then(function(r){return r.json()}).then(function(){loadProviders()}).catch(function(e){alert(e.message)})}
+function showAddProvider(){var name=prompt('Provider name:');if(!name||!name.trim())return;name=name.trim();fetch('/api/config/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,apiBase:'',model:''})}).then(function(r){return r.json()}).then(function(d){if(d.error)alert(d.error.message);else loadProviders()}).catch(function(e){alert(e.message)})}
+init();
+</script>
+<div class="container">
+<div class="card">
+<div class="card-title">Manual <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="var m=document.getElementById('manualBody');m.style.display=m.style.display==='none'?'':'none'">Toggle</button></div>
+<div id="manualBody" style="display:none;font-size:13px;line-height:1.6;color:#ccc;max-height:600px;overflow-y:auto;padding:8px">
+
+<h3 style="color:#7c4dff;margin:16px 0 8px">AIOPE Gateway — Complete Manual</h3>
+
+<h4 style="color:#fff;margin:12px 0 6px">Overview</h4>
+<p>AIOPE Gateway is an OpenAI-compatible LLM proxy that routes requests to multiple upstream providers. It runs as a single JAR or Docker container, exposes a web admin portal, and is designed for zero-config deployment on a Raspberry Pi or any Linux host.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">API Endpoints</h4>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /health</td><td style="padding:4px">Server status, provider count, blocked state. No auth required.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /v1/models</td><td style="padding:4px">List enabled providers as OpenAI-format models.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/chat/completions</td><td style="padding:4px">Chat proxy. Supports streaming (SSE) and non-streaming. Model: provider/model-slug.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/stats</td><td style="padding:4px">Uptime, requests, errors, CPU temp, load, RAM, disk, JVM heap.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/network</td><td style="padding:4px">Hostname, interfaces, IPs, MACs, DNS, gateway.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">PUT /api/network/hostname</td><td style="padding:4px">{"hostname":"name"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">PUT /api/network/dns</td><td style="padding:4px">{"servers":["8.8.8.8","1.1.1.1"]}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/wifi</td><td style="padding:4px">WiFi devices and active connections.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/wifi/scan</td><td style="padding:4px">Scan networks. Returns SSID, signal, security.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/wifi/connect</td><td style="padding:4px">{"ssid":"name","password":"pass"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/wifi/disconnect</td><td style="padding:4px">{"device":"wlan0"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/wifi/forget</td><td style="padding:4px">{"name":"MyNetwork"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/wifi/saved</td><td style="padding:4px">List saved WiFi connections.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/config</td><td style="padding:4px">Gateway config and provider list.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">PUT /api/config</td><td style="padding:4px">{"apiKey":"new-key"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/config/providers</td><td style="padding:4px">List all providers.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/config/providers</td><td style="padding:4px">{"name":"my-provider"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">PUT /api/config/providers/:name</td><td style="padding:4px">{"apiKey":"...","model":"...","apiBase":"...","path":"...","enabled":true}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">DELETE /api/config/providers/:name</td><td style="padding:4px">Remove provider.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/config/loadmodels</td><td style="padding:4px">{"provider":"name"} — fetch model list from upstream.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/certs</td><td style="padding:4px">List certs with expiry, issuer, fingerprint, status.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/certs/status</td><td style="padding:4px">Certbot version, auto-renew status.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/certs/issue</td><td style="padding:4px">{"domain":"*.example.com","method":"dns-porkbun","credentials":"/path/creds.ini"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/certs/renew</td><td style="padding:4px">Renew all certificates.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/certs/revoke</td><td style="padding:4px">{"domain":"example.com"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/certs/delete</td><td style="padding:4px">{"domain":"example.com"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/certs/autorenew</td><td style="padding:4px">{"enable":true} — toggle daily 3am cron.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/files/ls?path=</td><td style="padding:4px">List directory.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/files/read?path=</td><td style="padding:4px">Read file (max 2MB).</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/files/write</td><td style="padding:4px">{"path":"...","content":"...","chmod":"600"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/files/delete</td><td style="padding:4px">{"path":"..."}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/files/mkdir</td><td style="padding:4px">{"path":"..."}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/files/download?path=</td><td style="padding:4px">Download file as binary.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/files/upload?path=</td><td style="padding:4px">Multipart upload (max 50MB).</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /admin</td><td style="padding:4px">{"action":"start|stop|shutdown"}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/logs?after=N</td><td style="padding:4px">Poll log entries after ID N.</td></tr>
+</table>
+
+<h4 style="color:#fff;margin:12px 0 6px">Authentication</h4>
+<p>All endpoints except /health require auth via:<br>
+Header: <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">Authorization: Bearer YOUR_API_KEY</code><br>
+Or session cookie (set after portal login).<br>
+Default key: <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">aiope-gateway-key</code> — change immediately.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Provider Configuration</h4>
+<p><b>Name</b> — unique ID. <b>API Base</b> — upstream URL. <b>Path</b> — endpoint (default /chat/completions, change to /audio/speech, /embeddings, etc.). <b>Model</b> — model ID for upstream. <b>API Key</b> — upstream auth. <b>Enabled</b> — on/off toggle.</p>
+<p>Clients request: <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">provider-name/model-slug</code>. Gateway resolves and forwards.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">TLS / Wildcard Certificates</h4>
+<p>Challenge methods: <b>Standalone</b> (port 80), <b>Webroot</b>, <b>DNS-Cloudflare</b>, <b>DNS-Route53</b>, <b>DNS-Google</b>, <b>DNS-DigitalOcean</b>, <b>DNS-Porkbun</b>, <b>DNS-Manual</b>.</p>
+<p>For wildcards (*.example.com), use any DNS method. Both *.domain and domain are requested automatically.</p>
+<p>Credential file formats:</p>
+<pre style="background:#0d0d0d;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto"># Cloudflare (/opt/gateway/data/cloudflare.ini)
+dns_cloudflare_api_token = YOUR_TOKEN
+
+# Porkbun (/opt/gateway/data/porkbun.ini)
+dns_porkbun_key = pk1_xxx
+dns_porkbun_secret = sk1_xxx
+
+# DigitalOcean (/opt/gateway/data/do.ini)
+dns_digitalocean_token = YOUR_TOKEN
+
+# Google Cloud: use service account JSON file
+# Route53: uses AWS env vars or instance role</pre>
+<p>Create these files in the Files section. Set chmod to 600.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">WiFi</h4>
+<p>Requires NetworkManager on host. Scan, connect (with password prompt), disconnect, forget saved networks. Uses nmcli.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">File Manager</h4>
+<p>Sandboxed to: /opt/gateway/data, /etc/letsencrypt, /etc, /home, /tmp. Browse, edit, create, upload (50MB max), download, delete.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Deployment</h4>
+<pre style="background:#0d0d0d;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto"># Docker
+docker run -d --network host -v data:/opt/gateway/data aiope-gateway
+
+# Bare JAR
+java -Xmx256m -jar gateway-server-all.jar 8082 ./data
+
+# Pi flash
+sudo ./deploy/flash.sh /dev/sdX</pre>
+
+<h4 style="color:#fff;margin:12px 0 6px">Ports</h4>
+<p><b>8082</b> — Gateway + Portal. <b>7681</b> — Web Shell. <b>80</b> — Standalone cert issuance (temporary).</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Environment Variables</h4>
+<p><code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">GATEWAY_PORT</code> (8082), <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">TTYD_PORT</code> (7681), <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">DATA_DIR</code> (/opt/gateway/data)</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Pre-configured Providers</h4>
+<p>Pollinations (free, no key), GitHub Models (free tier), Google AI Studio (free tier), Cloudflare Workers AI (free tier), OpenRouter (free models), Cohere (free tier), Cline (free), Zen/OpenCode (free), Bedrock Mantle (free proxy).</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Client Examples</h4>
+<pre style="background:#0d0d0d;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto"># curl
+curl http://GATEWAY:8082/v1/chat/completions \
+  -H "Authorization: Bearer KEY" -H "Content-Type: application/json" \
+  -d '{"model":"pollinations/openai-fast","messages":[{"role":"user","content":"hi"}]}'
+
+# Python
+from openai import OpenAI
+c = OpenAI(base_url="http://GATEWAY:8082/v1", api_key="KEY")
+print(c.chat.completions.create(model="pollinations/openai-fast",
+  messages=[{"role":"user","content":"hi"}]).choices[0].message.content)</pre>
+
+<h4 style="color:#fff;margin:12px 0 6px">Troubleshooting</h4>
+<ul style="margin:4px 0 4px 20px">
+<li><b>503 blocked</b> — click Start in top bar.</li>
+<li><b>401</b> — check API key or re-login.</li>
+<li><b>404 no provider</b> — use provider/model format. Check /v1/models.</li>
+<li><b>429 rate limited</b> — 120 requests/min per IP. Wait and retry.</li>
+<li><b>429 too many failed attempts</b> — 10 failed logins in 15min blocks the IP. Wait 15 minutes.</li>
+<li><b>WiFi errors</b> — needs NetworkManager on host, --network host.</li>
+<li><b>Cert fails</b> — port 80 open (standalone) or valid credentials (DNS).</li>
+<li><b>File access denied</b> — only sandboxed paths allowed.</li>
+</ul>
+
+<h4 style="color:#fff;margin:12px 0 6px">Multi-User Authentication</h4>
+<p>The gateway supports multiple users, each with their own API key. Admin manages users from the portal.</p>
+<ul style="margin:4px 0 4px 20px">
+<li><b>Admin</b> — uses the gateway API key. Full access to all settings, users, and providers.</li>
+<li><b>Users</b> — created by admin. Each gets a unique API key. Can make API requests. Cannot manage settings.</li>
+<li>Users are stored in <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">data/users.json</code>.</li>
+<li>Users can optionally be restricted to specific providers via the <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">providers</code> field.</li>
+<li>Both admin and user keys work as Bearer tokens and as portal login passwords.</li>
+</ul>
+<p>API:</p>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/users</td><td style="padding:4px">List users (admin only). Keys are truncated.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/users</td><td style="padding:4px">{"name":"bob"} — creates user, returns generated API key.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">DELETE /api/users/:name</td><td style="padding:4px">Delete user.</td></tr>
+</table>
+
+<h4 style="color:#fff;margin:12px 0 6px">API Key Rotation</h4>
+<p>Click "Rotate Key" in Server Info to generate a new gateway API key. The old key immediately stops working. The new key is shown once — save it. All existing sessions are invalidated.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Rate Limiting</h4>
+<p>Liberal rate limiting to prevent DoS attacks. 120 requests per minute per IP address on API endpoints (/v1/*). Returns HTTP 429 when exceeded. Portal and config endpoints are not rate-limited.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Brute Force Protection</h4>
+<p>10 failed login attempts from the same IP within 15 minutes blocks that IP from the login page. Returns HTTP 429. The block expires automatically after 15 minutes. API key auth is also protected.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Request History</h4>
+<p>The last 500 API requests are tracked in memory with: timestamp, endpoint, HTTP status, latency (ms), and user. Visible in the portal and via API.</p>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/history?limit=50</td><td style="padding:4px">Recent requests. Color-coded: green (2xx), orange (4xx), red (5xx).</td></tr>
+</table>
+
+<h4 style="color:#fff;margin:12px 0 6px">Audit Log</h4>
+<p>Tracks security-relevant actions: login, login_failed, user_add, user_delete, webhook_update, backup_export, backup_import. Last 1000 entries kept in memory.</p>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/audit</td><td style="padding:4px">Recent audit entries with user, action, detail, timestamp.</td></tr>
+</table>
+
+<h4 style="color:#fff;margin:12px 0 6px">Webhooks</h4>
+<p>Set a webhook URL to receive notifications. Supports Slack, Discord, or any HTTP endpoint that accepts JSON POST. Events are sent as:</p>
+<pre style="background:#0d0d0d;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto">{"event":"test","message":"...","ts":1234567890}</pre>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/webhooks</td><td style="padding:4px">Get current webhook URL.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">PUT /api/webhooks</td><td style="padding:4px">{"url":"https://hooks.slack.com/..."}</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/webhooks</td><td style="padding:4px">Send test notification.</td></tr>
+</table>
+
+<h4 style="color:#fff;margin:12px 0 6px">Backup &amp; Restore</h4>
+<p>Export the entire <code style="background:#2d2d2d;padding:2px 6px;border-radius:3px">data/</code> directory (config, users, webhooks) as a tar.gz file. Import restores it and reloads all configuration.</p>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /api/backup/export</td><td style="padding:4px">Download backup as tar.gz.</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /api/backup/import</td><td style="padding:4px">Upload tar.gz to restore. Reloads config, users, webhooks.</td></tr>
+</table>
+
+<h4 style="color:#fff;margin:12px 0 6px">PWA / Add to Home Screen</h4>
+<p>The portal includes a web app manifest. On mobile browsers, use "Add to Home Screen" to install it as a standalone app with no browser chrome.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Theme</h4>
+<p>Click the Theme button in the top bar to toggle between dark and light mode. Preference is saved in localStorage.</p>
+
+<h4 style="color:#fff;margin:12px 0 6px">Systemd Service (Bare Metal)</h4>
+<p>For non-Docker installs, copy the service file and enable it:</p>
+<pre style="background:#0d0d0d;padding:8px;border-radius:4px;font-size:11px;overflow-x:auto">sudo cp deploy/aiope-gateway.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now aiope-gateway</pre>
+
+<h4 style="color:#fff;margin:12px 0 6px">Full OpenAI-Compatible Endpoints</h4>
+<table style="width:100%;border-collapse:collapse;font-size:12px;margin:8px 0">
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/chat/completions</td><td style="padding:4px">Chat (streaming + non-streaming)</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/completions</td><td style="padding:4px">Legacy completions</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/embeddings</td><td style="padding:4px">Text embeddings</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/rerank</td><td style="padding:4px">Reranking</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/audio/speech</td><td style="padding:4px">Text-to-speech (returns audio bytes)</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/audio/transcriptions</td><td style="padding:4px">Speech-to-text / Whisper (multipart upload)</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/audio/translations</td><td style="padding:4px">Audio translation (multipart upload)</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/images/generations</td><td style="padding:4px">Image generation</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/images/edits</td><td style="padding:4px">Image editing (multipart upload)</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/images/variations</td><td style="padding:4px">Image variations (multipart upload)</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">POST /v1/moderations</td><td style="padding:4px">Content moderation</td></tr>
+<tr style="border-bottom:1px solid #333"><td style="padding:4px;color:#7c4dff;font-family:monospace;white-space:nowrap">GET /v1/models</td><td style="padding:4px">List available models</td></tr>
+</table>
+
+<p style="color:#555;margin-top:16px;font-size:11px">AIOPE Gateway by XNet | xnet.ngo</p>
+</div>
+</div>
+</div>
+</body></html>

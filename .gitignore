@@ -1,0 +1,5 @@
+build/
+.gradle/
+*.jar
+gateway.log
+data/config.json
