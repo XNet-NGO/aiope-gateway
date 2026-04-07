@@ -1,0 +1,64 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ANDROID_HOME=/opt/android-sdk
+ENV ANDROID_SDK_ROOT=/opt/android-sdk
+ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/36.0.0:/usr/local/go/bin:/root/.cargo/bin"
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+
+# Base packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    openjdk-17-jdk-headless \
+    openjdk-21-jdk-headless \
+    python3 python3-pip python3-venv \
+    nodejs npm \
+    git git-lfs curl wget unzip zip \
+    build-essential cmake ninja-build \
+    gcc g++ clang \
+    rustc cargo \
+    openssh-client \
+    jq tree htop tmux vim nano \
+    ca-certificates gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Default to Java 17 (Android builds)
+RUN update-alternatives --set java /usr/lib/jvm/java-17-openjdk-arm64/bin/java
+
+# Android SDK
+RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
+    cd /tmp && \
+    wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O cmdtools.zip && \
+    unzip -q cmdtools.zip && \
+    mv cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest && \
+    rm cmdtools.zip
+
+RUN yes | sdkmanager --licenses > /dev/null 2>&1 && \
+    sdkmanager \
+    "platform-tools" \
+    "platforms;android-34" \
+    "platforms;android-35" \
+    "build-tools;34.0.0" \
+    "build-tools;35.0.0" \
+    "build-tools;36.0.0" \
+    "ndk;26.1.10909125" \
+    > /dev/null 2>&1
+
+# Gradle wrapper will download itself, but pre-cache common versions
+RUN mkdir -p /tmp/gradle-cache && cd /tmp/gradle-cache && \
+    wget -q "https://services.gradle.org/distributions/gradle-8.12-bin.zip" -O gradle.zip && \
+    mkdir -p /root/.gradle/wrapper/dists/gradle-8.12-bin && \
+    mv gradle.zip /root/.gradle/wrapper/dists/gradle-8.12-bin/ && \
+    cd / && rm -rf /tmp/gradle-cache
+
+# Python packages
+RUN pip3 install --break-system-packages \
+    litellm openai pydantic aiohttp requests
+
+# GitHub CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && \
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" > /etc/apt/sources.list.d/github-cli.list && \
+    apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /workspace
+
+CMD ["/bin/bash"]

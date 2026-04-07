@@ -1,0 +1,25 @@
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.dev
+    container_name: xnet-dev
+    hostname: xnet-dev
+    stdin_open: true
+    tty: true
+    network_mode: host
+    volumes:
+      - ./:/workspace/aiope-gateway
+      - ${HOME}/.ssh:/root/.ssh:ro
+      - ${HOME}/.gitconfig:/root/.gitconfig:ro
+      - dev-gradle:/root/.gradle
+      - dev-android:/opt/android-sdk
+    environment:
+      - ANDROID_HOME=/opt/android-sdk
+      - ANDROID_SDK_ROOT=/opt/android-sdk
+      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+    restart: unless-stopped
+
+volumes:
+  dev-gradle:
+  dev-android:
