@@ -12,6 +12,7 @@ services:
       # Projects
       - ../aiope-gateway:/workspace/aiope-gateway
       - ../aiope:/workspace/aiope
+      - ../aiope2:/workspace/aiope2
       - ../box:/workspace/box
       - ../Haven:/workspace/Haven
       - ../mcpshell:/workspace/mcpshell

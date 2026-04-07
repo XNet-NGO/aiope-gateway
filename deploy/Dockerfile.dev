@@ -44,9 +44,9 @@ RUN yes | sdkmanager --licenses > /dev/null 2>&1 && \
     > /dev/null 2>&1
 
 # Pre-cache Gradle distributions used by projects
-# AIOPE IDE uses 8.4, Gateway uses 8.3, also grab 8.12
+# AIOPE1 uses 8.4, Gateway uses 8.3, AIOPE2 uses 9.1
 RUN mkdir -p /root/.gradle/wrapper/dists && \
-    for v in 8.3 8.4 8.12; do \
+    for v in 8.3 8.4 8.12 9.1; do \
       wget -q "https://services.gradle.org/distributions/gradle-${v}-bin.zip" \
         -O "/root/.gradle/wrapper/dists/gradle-${v}-bin.zip" 2>/dev/null || true; \
     done
