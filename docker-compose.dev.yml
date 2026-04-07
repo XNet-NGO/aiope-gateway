@@ -9,26 +9,5 @@ services:
     tty: true
     network_mode: host
     volumes:
-      # Projects
-      - ../aiope-gateway:/workspace/aiope-gateway
-      - ../aiope:/workspace/aiope
-      - ../aiope2:/workspace/aiope2
-      - ../box:/workspace/box
-      - ../Haven:/workspace/Haven
-      - ../mcpshell:/workspace/mcpshell
-      - ../shellbox:/workspace/shellbox
-      # Caches (persist across rebuilds)
-      - dev-gradle:/root/.gradle
-      - dev-android:/opt/android-sdk
-      # SSH + Git
-      - ${HOME}/.ssh:/root/.ssh:ro
-      - ${HOME}/.gitconfig:/root/.gitconfig:ro
-    environment:
-      - ANDROID_HOME=/opt/android-sdk
-      - ANDROID_SDK_ROOT=/opt/android-sdk
-      - JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+      - /workspace:/workspace
     restart: unless-stopped
-
-volumes:
-  dev-gradle:
-  dev-android:

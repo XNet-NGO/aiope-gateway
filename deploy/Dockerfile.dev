@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV ANDROID_HOME=/opt/android-sdk
 ENV ANDROID_SDK_ROOT=/opt/android-sdk
-ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/build-tools/36.0.0:/usr/local/go/bin:/root/.cargo/bin"
+ENV PATH="${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools"
 
 # Base packages
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -20,11 +20,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Default to Java 17 (Android/Gradle 8.x needs 17)
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
+# Default to Java 17
 RUN update-alternatives --set java /usr/lib/jvm/java-17-openjdk-arm64/bin/java 2>/dev/null || true
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-arm64
 
-# Android SDK — platforms, build-tools, NDK for AIOPE IDE
+# Android SDK
 RUN mkdir -p ${ANDROID_HOME}/cmdline-tools && \
     cd /tmp && \
     wget -q "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -O cmdtools.zip && \
@@ -43,15 +43,7 @@ RUN yes | sdkmanager --licenses > /dev/null 2>&1 && \
     "ndk;26.1.10909125" \
     > /dev/null 2>&1
 
-# Pre-cache Gradle distributions used by projects
-# AIOPE1 uses 8.4, Gateway uses 8.3, AIOPE2 uses 9.1
-RUN mkdir -p /root/.gradle/wrapper/dists && \
-    for v in 8.3 8.4 8.12 9.1; do \
-      wget -q "https://services.gradle.org/distributions/gradle-${v}-bin.zip" \
-        -O "/root/.gradle/wrapper/dists/gradle-${v}-bin.zip" 2>/dev/null || true; \
-    done
-
-# Python packages (litellm + deps for Chaquopy/AIOPE)
+# Python packages
 RUN pip3 install --break-system-packages \
     litellm openai pydantic aiohttp requests boto3 PyYAML jinja2
 
