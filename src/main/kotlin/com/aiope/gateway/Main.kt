@@ -103,6 +103,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         handler.addServlet(ApiServlet::class.java, "/v1/*").registration.setMultipartConfig(
             javax.servlet.MultipartConfigElement("/tmp", 50*1024*1024, 50*1024*1024, 1024*1024)
         )
+        handler.addServlet(DataServlet::class.java, "/v1/data")
         handler.addServlet(ConfigServlet::class.java, "/api/config/*")
         handler.addServlet(HealthServlet::class.java, "/health")
         handler.addServlet(AdminServlet::class.java, "/admin/*")
