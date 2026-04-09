@@ -88,6 +88,21 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
     fun saveWebhooks() { webhookFile.writeText("""{"url":"$webhookUrl"}""") }
     fun sendWebhook(event: String, message: String) { if (webhookUrl.isBlank()) return; scope.launch(Dispatchers.IO) { try { val body = gson.toJson(mapOf("event" to event, "message" to message, "ts" to System.currentTimeMillis())); okhttp3.OkHttpClient().newCall(okhttp3.Request.Builder().url(webhookUrl).post(body.toByteArray().toRequestBody("application/json".toMediaType())).build()).execute().close() } catch (_: Exception) {} } }
 
+
+    // Third-party API keys: stored in data/keys.json
+    private val apiKeys = ConcurrentHashMap<String, String>()
+    private val keysFile = File(dataDir, "keys.json")
+    fun loadKeys() {
+        // Load from file, then overlay env vars (env takes precedence)
+        try { if (keysFile.exists()) { val o = com.google.gson.JsonParser.parseString(keysFile.readText()).asJsonObject; o.entrySet().forEach { apiKeys[it.key] = it.value.asString } } } catch (_: Exception) {}
+        System.getenv("NASA_API_KEY")?.let { if (it.isNotBlank()) apiKeys["nasa"] = it }
+        System.getenv("GEOAPIFY_KEY")?.let { if (it.isNotBlank()) apiKeys["geoapify"] = it }
+    }
+    fun saveKeys() { keysFile.writeText(gson.toJson(apiKeys)) }
+    fun getApiKeys(): Map<String, String> = apiKeys.toMap()
+    fun getApiKey(name: String): String = apiKeys[name] ?: ""
+    fun setApiKey(name: String, value: String) { if (value.isBlank()) apiKeys.remove(name) else apiKeys[name] = value; saveKeys() }
+    fun removeApiKey(name: String) { apiKeys.remove(name); saveKeys() }
     val startTime = System.currentTimeMillis()
     @Volatile var requestCount = 0L
     @Volatile var errorCount = 0L
@@ -120,6 +135,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         handler.addServlet(UsersServlet::class.java, "/api/users/*")
         handler.addServlet(WebhookServlet::class.java, "/api/webhooks/*")
         handler.addServlet(BackupServlet::class.java, "/api/backup/*")
+        handler.addServlet(KeysServlet::class.java, "/api/keys/*")
         handler.setAttribute("gateway", this)
 
         // Main connector (default port)
@@ -233,6 +249,7 @@ fun main(args: Array<String>) {
     val server = GatewayServer(port, dataDir)
     server.loadUsers()
     server.loadWebhooks()
+    server.loadKeys()
     server.start()
 }
 
@@ -1063,6 +1080,43 @@ class BackupServlet : HttpServlet() {
                 resp.writer.write(jsonResp("status" to if (exit == 0) "ok" else "error"))
             }
             else -> { resp.status = 404; resp.contentType = "application/json"; resp.writer.write(errResp("Not found", 404)) }
+        }
+    }
+}
+
+class KeysServlet : HttpServlet() {
+    override fun service(req: HttpServletRequest, resp: HttpServletResponse) {
+        val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
+        if (!ctx.isAuthorized(req)) { resp.status = 401; resp.contentType = "application/json"; resp.writer.write(errResp("Unauthorized", 401)); return }
+        if (ctx.resolveUser(req) != "admin") { resp.status = 403; resp.contentType = "application/json"; resp.writer.write(errResp("Admin only", 403)); return }
+        resp.contentType = "application/json"; resp.setHeader("Access-Control-Allow-Origin", "*")
+        if (req.method == "OPTIONS") { resp.setHeader("Access-Control-Allow-Methods", "GET,PUT,DELETE,OPTIONS"); resp.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization"); resp.status = 200; return }
+        val path = req.pathInfo?.removePrefix("/") ?: ""
+        when {
+            path == "" && req.method == "GET" -> {
+                // Return keys with values masked
+                val masked = ctx.getApiKeys().mapValues { (_, v) -> if (v.length > 8) "${v.take(4)}...${v.takeLast(4)}" else "***" }
+                resp.writer.write(G.toJson(mapOf("keys" to masked)))
+            }
+            path == "" && req.method == "PUT" -> {
+                val j = JsonParser.parseString(req.reader.readText()).asJsonObject
+                j.entrySet().forEach { (k, v) ->
+                    val value = v.asString.trim()
+                    if (value.isNotEmpty() && value != "***" && !value.contains("...")) {
+                        ctx.setApiKey(k, value)
+                        ServerLog.add("API key set: $k")
+                        ctx.audit(ctx.resolveUser(req), "key_set", k)
+                    }
+                }
+                resp.writer.write(jsonResp("status" to "ok"))
+            }
+            path.isNotEmpty() && req.method == "DELETE" -> {
+                ctx.removeApiKey(path)
+                ServerLog.add("API key removed: $path")
+                ctx.audit(ctx.resolveUser(req), "key_delete", path)
+                resp.writer.write(jsonResp("status" to "ok"))
+            }
+            else -> { resp.status = 404; resp.writer.write(errResp("Not found", 404)) }
         }
     }
 }

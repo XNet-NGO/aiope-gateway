@@ -165,6 +165,17 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 </div>
 </div>
 <div class="card">
+<div class="card-title">API Keys <button class="btn btn-save" style="padding:4px 8px;font-size:11px" onclick="saveKeys()">Save</button></div>
+<div id="keysPanel" style="display:flex;flex-direction:column;gap:8px">
+<div style="display:grid;grid-template-columns:120px 1fr 40px;gap:6px;align-items:center" id="keysList"></div>
+<div style="display:flex;gap:6px">
+<input type="text" id="newKeyName" placeholder="Key name (e.g. openweather)" style="padding:6px 8px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-size:12px;width:140px">
+<input type="text" id="newKeyValue" placeholder="API key value" style="padding:6px 8px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-size:12px;flex:1;font-family:monospace">
+<button class="btn btn-start" style="padding:6px 12px;font-size:12px" onclick="addKey()">Add</button>
+</div>
+</div>
+</div>
+<div class="card">
 <div class="card-title">Audit Log <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="loadAudit()">Refresh</button></div>
 <div id="auditList" style="max-height:200px;overflow-y:auto;font-size:11px;font-family:monospace"></div>
 </div>
@@ -326,7 +337,11 @@ function saveWebhook(){var u=document.getElementById('webhookUrl').value;fetch('
 function testWebhook(){fetch('/api/webhooks',{method:'POST'}).then(function(r){return r.json()}).then(function(d){alert(d.message||'Sent')})}
 function loadWebhook(){fetch('/api/webhooks').then(function(r){return r.json()}).then(function(d){document.getElementById('webhookUrl').value=d.url||''}).catch(function(){})}
 function importBackup(){var f=document.getElementById('backupFile').files[0];if(!f)return;if(!confirm('Restore backup? This will overwrite current config.'))return;fetch('/api/backup/import',{method:'POST',body:f}).then(function(r){return r.json()}).then(function(d){alert(d.status==='ok'?'Backup restored':'Restore failed');location.reload()})}
-function init(){loadProviders();loadConfig();loadNetwork();loadWifi();loadCerts();loadUsers();loadHistory();loadAudit();loadWebhook();fileBrowse('/opt/gateway/data');refreshHealth();refreshStats();setInterval(refreshHealth,3000);setInterval(refreshStats,5000);setInterval(pollLogs,2000);pollLogs()}
+function loadKeys(){fetch("/api/keys").then(function(r){return r.json()}).then(function(d){var el=document.getElementById("keysList");el.innerHTML="";var keys=d.keys||{};Object.keys(keys).sort().forEach(function(k){el.innerHTML+='<div style="color:#aaa;font-size:12px">'+k+'</div><input type="text" data-key="'+k+'" value="'+keys[k]+'" style="padding:4px 6px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-size:11px;font-family:monospace"><button class="btn btn-stop" style="padding:2px 8px;font-size:11px" onclick="deleteKey(\''+k+'\')">×</button>'})})}
+function saveKeys(){var inputs=document.querySelectorAll("#keysList input[data-key]");var data={};inputs.forEach(function(i){var v=i.value.trim();if(v&&!v.includes("..."))data[i.dataset.key]=v});fetch("/api/keys",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(){loadKeys()})}
+function addKey(){var n=document.getElementById("newKeyName").value.trim();var v=document.getElementById("newKeyValue").value.trim();if(!n||!v)return;var d={};d[n]=v;fetch("/api/keys",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(){document.getElementById("newKeyName").value="";document.getElementById("newKeyValue").value="";loadKeys()})}
+function deleteKey(name){if(!confirm("Delete key: "+name+"?"))return;fetch("/api/keys/"+name,{method:"DELETE"}).then(function(){loadKeys()})}
+function init(){loadProviders();loadConfig();loadNetwork();loadWifi();loadCerts();loadUsers();loadKeys();loadHistory();loadAudit();loadWebhook();fileBrowse('/opt/gateway/data');refreshHealth();refreshStats();setInterval(refreshHealth,3000);setInterval(refreshStats,5000);setInterval(pollLogs,2000);pollLogs()}
 function refreshHealth(){fetch('/health').then(function(r){return r.json()}).then(function(d){document.getElementById('status').textContent=d.blocked?'Blocked':'Running';document.getElementById('status').style.color=d.blocked?'#f44336':'#4caf50';document.getElementById('count').textContent=d.providers})}
 function refreshStats(){fetch('/api/stats').then(function(r){return r.json()}).then(function(d){
 document.getElementById('st-uptime').textContent=d.uptime||'-';

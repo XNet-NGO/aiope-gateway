@@ -8,8 +8,14 @@ import java.util.concurrent.TimeUnit
 import javax.servlet.http.*
 
 class DataServlet : HttpServlet() {
-    private val nasaKey: String = System.getenv("NASA_API_KEY") ?: "DEMO_KEY"
-    private val geoapifyKey: String = System.getenv("GEOAPIFY_KEY") ?: ""
+    private fun nasaKey(req: HttpServletRequest): String {
+        val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
+        return ctx.getApiKey("nasa").ifEmpty { "DEMO_KEY" }
+    }
+    private fun geoapifyKey(req: HttpServletRequest): String {
+        val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
+        return ctx.getApiKey("geoapify")
+    }
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -38,14 +44,15 @@ class DataServlet : HttpServlet() {
 
         // Geocode endpoint
         if (q == "geocode" || q == "places") {
-            if (geoapifyKey.isEmpty()) {
+            val geoKey = geoapifyKey(req)
+            if (geoKey.isEmpty()) {
                 resp.status = 503; resp.writer.write("""{"error":{"message":"Geoapify key not configured on gateway"}}"""); return
             }
             val query = req.getParameter("query") ?: ""
             val enc = java.net.URLEncoder.encode(query, "UTF-8")
             // Try places API first, fallback to geocode if 0 results
-            val placesUrl = "https://api.geoapify.com/v2/places?categories=commercial,catering,service,entertainment,leisure,sport,tourism,accommodation,education,healthcare&conditions=named&filter=circle:$lon,$lat,5000&bias=proximity:$lon,$lat&limit=5&name=$enc&apiKey=$geoapifyKey"
-            val geocodeUrl = "https://api.geoapify.com/v1/geocode/search?text=$enc&bias=proximity:$lon,$lat&limit=5&apiKey=$geoapifyKey"
+            val placesUrl = "https://api.geoapify.com/v2/places?categories=commercial,catering,service,entertainment,leisure,sport,tourism,accommodation,education,healthcare&conditions=named&filter=circle:$lon,$lat,5000&bias=proximity:$lon,$lat&limit=5&name=$enc&apiKey=$geoKey"
+            val geocodeUrl = "https://api.geoapify.com/v1/geocode/search?text=$enc&bias=proximity:$lon,$lat&limit=5&apiKey=$geoKey"
             val url1 = if (q == "geocode") geocodeUrl else placesUrl
             ServerLog.add("Geocode: $q -> ${url1.take(80)}")
             var geoBody = http.newCall(Request.Builder().url(url1).build()).execute().body?.string() ?: ""
@@ -61,7 +68,7 @@ class DataServlet : HttpServlet() {
         }
 
         try {
-            val url = buildUrl(q, lat, lon, extra)
+            val url = buildUrl(q, lat, lon, extra, req)
                 ?: run { resp.status = 400; resp.writer.write("""{"error":{"message":"Unknown category: $q. Available: ${CATEGORIES.keys.sorted()}"}}"""); return }
 
             val cacheKey = "$q|$lat|$lon|$extra"
@@ -101,13 +108,13 @@ class DataServlet : HttpServlet() {
         }
     }
 
-    private fun buildUrl(q: String, lat: String, lon: String, extra: String): String? {
+    private fun buildUrl(q: String, lat: String, lon: String, extra: String, req: HttpServletRequest): String? {
         val entry = CATEGORIES[q] ?: return null
         return entry.first
             .replace("{lat}", lat.ifEmpty { "0" })
             .replace("{lon}", lon.ifEmpty { "0" })
             .replace("{extra}", extra)
-            .replace("DEMO_KEY", nasaKey)
+            .replace("DEMO_KEY", nasaKey(req))
     }
 
     companion object {
