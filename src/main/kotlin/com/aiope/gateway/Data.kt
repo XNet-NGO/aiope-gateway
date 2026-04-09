@@ -132,7 +132,7 @@ class DataServlet : HttpServlet() {
                 "https://eonet.gsfc.nasa.gov/api/v3/events?limit=20",
                 "nasa-eonet"),
             "mars_photos" to Pair(
-                "https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/latest_photos?api_key=DEMO_KEY",
+                "https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/latest_photos?page=1&api_key=DEMO_KEY",
                 "nasa-mars"),
             "sunrise_sunset" to Pair(
                 "https://api.sunrise-sunset.org/json?lat={lat}&lng={lon}&formatted=0",
