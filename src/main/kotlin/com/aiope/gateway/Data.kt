@@ -42,16 +42,20 @@ class DataServlet : HttpServlet() {
                 resp.status = 503; resp.writer.write("""{"error":{"message":"Geoapify key not configured on gateway"}}"""); return
             }
             val query = req.getParameter("query") ?: ""
-            val geoUrl = if (q == "places")
-                "https://api.geoapify.com/v2/places?categories=commercial,catering,service,entertainment,leisure,sport,tourism,accommodation,education,healthcare&conditions=named&filter=circle:$lon,$lat,5000&bias=proximity:$lon,$lat&limit=5&name=${java.net.URLEncoder.encode(query, "UTF-8")}&apiKey=$geoapifyKey"
-            else
-                "https://api.geoapify.com/v1/geocode/search?text=${java.net.URLEncoder.encode(query, "UTF-8")}&bias=proximity:$lon,$lat&limit=5&apiKey=$geoapifyKey"
-            ServerLog.add("Geocode: $q -> $geoUrl")
-            val request = Request.Builder().url(geoUrl).header("User-Agent", "AIOPE-Gateway/1.0").build()
-            val response = http.newCall(request).execute()
-            val body = response.body?.string() ?: ""
+            val enc = java.net.URLEncoder.encode(query, "UTF-8")
+            // Try places API first, fallback to geocode if 0 results
+            val placesUrl = "https://api.geoapify.com/v2/places?categories=commercial,catering,service,entertainment,leisure,sport,tourism,accommodation,education,healthcare&conditions=named&filter=circle:$lon,$lat,5000&bias=proximity:$lon,$lat&limit=5&name=$enc&apiKey=$geoapifyKey"
+            val geocodeUrl = "https://api.geoapify.com/v1/geocode/search?text=$enc&bias=proximity:$lon,$lat&limit=5&apiKey=$geoapifyKey"
+            val url1 = if (q == "geocode") geocodeUrl else placesUrl
+            ServerLog.add("Geocode: $q -> ${url1.take(80)}")
+            var geoBody = http.newCall(Request.Builder().url(url1).build()).execute().body?.string() ?: ""
+            val parsed = try { JsonParser.parseString(geoBody).asJsonObject } catch (_: Exception) { null }
+            if (parsed != null && (parsed.getAsJsonArray("features")?.size() ?: 0) == 0 && q == "places") {
+                ServerLog.add("Places empty, falling back to geocode")
+                geoBody = http.newCall(Request.Builder().url(geocodeUrl).build()).execute().body?.string() ?: ""
+            }
             val result = G.toJson(mapOf("category" to q, "source" to "geoapify", "timestamp" to System.currentTimeMillis(),
-                "data" to try { JsonParser.parseString(body) } catch (_: Exception) { JsonPrimitive(body.take(8000)) }))
+                "data" to try { JsonParser.parseString(geoBody) } catch (_: Exception) { JsonPrimitive(geoBody.take(8000)) }))
             cache.put("$q|$query|$lat|$lon", result)
             resp.writer.write(result); return
         }
