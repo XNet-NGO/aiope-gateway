@@ -54,7 +54,7 @@ class DataServlet : HttpServlet() {
             val placesUrl = "https://api.geoapify.com/v2/places?categories=commercial,catering,service,entertainment,leisure,sport,tourism,accommodation,education,healthcare&conditions=named&filter=circle:$lon,$lat,5000&bias=proximity:$lon,$lat&limit=5&name=$enc&apiKey=$geoKey"
             val geocodeUrl = "https://api.geoapify.com/v1/geocode/search?text=$enc&bias=proximity:$lon,$lat&limit=5&apiKey=$geoKey"
             val url1 = if (q == "geocode") geocodeUrl else placesUrl
-            ServerLog.add("Geocode: $q -> ${url1.take(80)}")
+            ServerLog.add("Geocode: $q -> ${url1.replace(Regex("(api_key|apiKey|key)=[^&]+"), "\$1=***").take(80)}")
             var geoBody = http.newCall(Request.Builder().url(url1).build()).execute().body?.string() ?: ""
             val parsed = try { JsonParser.parseString(geoBody).asJsonObject } catch (_: Exception) { null }
             if (parsed != null && (parsed.getAsJsonArray("features")?.size() ?: 0) == 0 && q == "places") {
@@ -79,7 +79,7 @@ class DataServlet : HttpServlet() {
                 return
             }
 
-            ServerLog.add("Data fetch: $q -> $url")
+            ServerLog.add("Data fetch: $q -> ${url.replace(Regex("(api_key|apiKey|key)=[^&]+"), "\$1=***")}")
             val request = Request.Builder().url(url)
                 .header("User-Agent", "AIOPE-Gateway/1.0")
                 .header("Accept", "application/json, text/plain, */*")
