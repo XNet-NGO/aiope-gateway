@@ -8,6 +8,8 @@ import java.util.concurrent.TimeUnit
 import javax.servlet.http.*
 
 class DataServlet : HttpServlet() {
+    private val nasaKey: String = System.getenv("NASA_API_KEY") ?: "DEMO_KEY"
+    private val geoapifyKey: String = System.getenv("GEOAPIFY_KEY") ?: ""
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -32,6 +34,26 @@ class DataServlet : HttpServlet() {
         if (q.isEmpty()) {
             resp.writer.write(G.toJson(mapOf("categories" to CATEGORIES.keys.sorted(), "usage" to "/v1/data?q=<category>&lat=<lat>&lon=<lon>")))
             return
+        }
+
+        // Geocode endpoint
+        if (q == "geocode" || q == "places") {
+            if (geoapifyKey.isEmpty()) {
+                resp.status = 503; resp.writer.write("""{"error":{"message":"Geoapify key not configured on gateway"}}"""); return
+            }
+            val query = req.getParameter("query") ?: ""
+            val geoUrl = if (q == "places")
+                "https://api.geoapify.com/v2/places?categories=commercial,catering,service,entertainment,leisure,sport,tourism,accommodation,education,healthcare&conditions=named&filter=circle:$lon,$lat,5000&bias=proximity:$lon,$lat&limit=5&name=${java.net.URLEncoder.encode(query, "UTF-8")}&apiKey=$geoapifyKey"
+            else
+                "https://api.geoapify.com/v1/geocode/search?text=${java.net.URLEncoder.encode(query, "UTF-8")}&bias=proximity:$lon,$lat&limit=5&apiKey=$geoapifyKey"
+            ServerLog.add("Geocode: $q -> $geoUrl")
+            val request = Request.Builder().url(geoUrl).header("User-Agent", "AIOPE-Gateway/1.0").build()
+            val response = http.newCall(request).execute()
+            val body = response.body?.string() ?: ""
+            val result = G.toJson(mapOf("category" to q, "source" to "geoapify", "timestamp" to System.currentTimeMillis(),
+                "data" to try { JsonParser.parseString(body) } catch (_: Exception) { JsonPrimitive(body.take(8000)) }))
+            cache.put("$q|$query|$lat|$lon", result)
+            resp.writer.write(result); return
         }
 
         try {
@@ -81,6 +103,7 @@ class DataServlet : HttpServlet() {
             .replace("{lat}", lat.ifEmpty { "0" })
             .replace("{lon}", lon.ifEmpty { "0" })
             .replace("{extra}", extra)
+            .replace("DEMO_KEY", nasaKey)
     }
 
     companion object {
