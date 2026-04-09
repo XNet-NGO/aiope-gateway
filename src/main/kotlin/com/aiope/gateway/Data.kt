@@ -158,9 +158,24 @@ class DataServlet : HttpServlet() {
             "earth_events" to Pair(
                 "https://eonet.gsfc.nasa.gov/api/v3/events?limit=20",
                 "nasa-eonet"),
-            "mars_photos" to Pair(
-                "https://api.nasa.gov/mars-photos/api/v1/rovers/curiosity/latest_photos?page=1&api_key=DEMO_KEY",
-                "nasa-mars"),
+
+
+            // EPIC — Daily full-disc Earth imagery from DSCOVR
+            "epic" to Pair(
+                "https://api.nasa.gov/EPIC/api/natural?api_key=DEMO_KEY",
+                "nasa-epic"),
+            // NASA Image & Video Library (no key needed)
+            "nasa_media" to Pair(
+                "https://images-api.nasa.gov/search?q={extra}&media_type=image",
+                "nasa-images"),
+            // GIBS Snapshot — satellite imagery for any region
+            "earth_image" to Pair(
+                "https://gibs.earthdata.nasa.gov/image-download?TIME=2026001&extent={lon},{lat},{extra}&epsg=4326&layers=MODIS_Terra_CorrectedReflectance_TrueColor,Coastlines&format=image/jpeg&width=800&height=600",
+                "nasa-gibs"),
+            // NASA TechTransfer — patents and software
+            "nasa_tech" to Pair(
+                "https://api.nasa.gov/techtransfer/patent/?{extra}&api_key=DEMO_KEY",
+                "nasa-techtransfer"),
             "sunrise_sunset" to Pair(
                 "https://api.sunrise-sunset.org/json?lat={lat}&lng={lon}&formatted=0",
                 "sunrise-sunset.org"),
@@ -182,9 +197,7 @@ class DataServlet : HttpServlet() {
                 "noaa-tides"),
 
             // Aviation
-            "flights" to Pair(
-                "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m&models=best_match",
-                "open-meteo-placeholder"),
+
 
             // Fire & Hazards
             "fires" to Pair(
