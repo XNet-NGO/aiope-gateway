@@ -10,7 +10,7 @@ import javax.servlet.http.*
 class DataServlet : HttpServlet() {
     private val http = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(30, TimeUnit.SECONDS)
         .build()
     private val cache = Caffeine.newBuilder()
         .maximumSize(500)
@@ -156,16 +156,13 @@ class DataServlet : HttpServlet() {
 
             // Aviation
             "flights" to Pair(
-                "https://opensky-network.org/api/states/all?lamin={lat}&lomin={lon}&lamax={extra}",
-                "opensky"),
-            "flights_global" to Pair(
-                "https://opensky-network.org/api/states/all",
-                "opensky"),
+                "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m&models=best_match",
+                "open-meteo-placeholder"),
 
             // Fire & Hazards
             "fires" to Pair(
-                "https://firms.modaps.eosdis.nasa.gov/api/area/csv/DEMO_KEY/VIIRS_SNPP_NRT/world/1",
-                "nasa-firms"),
+                "https://eonet.gsfc.nasa.gov/api/v3/events?category=wildfires&limit=20",
+                "nasa-eonet-fires"),
             "impact_risk" to Pair(
                 "https://ssd-api.jpl.nasa.gov/sentry.api",
                 "nasa-jpl"),
@@ -175,8 +172,8 @@ class DataServlet : HttpServlet() {
                 "http://ip-api.com/json/",
                 "ip-api"),
             "time" to Pair(
-                "http://worldtimeapi.org/api/ip",
-                "worldtimeapi")
+                "https://timeapi.io/api/time/current/coordinate?latitude={lat}&longitude={lon}",
+                "timeapi.io")
         )
     }
 }
