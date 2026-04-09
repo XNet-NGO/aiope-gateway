@@ -130,7 +130,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         // Port 80 connector
         if (port != 80) {
             val http80 = ServerConnector(server, HttpConnectionFactory(HttpConfiguration().apply { sendServerVersion = false }))
-            http80.host = "0.0.0.0"; http80.port = 80
+            http80.host = "0.0.0.0"; http80.port = System.getenv("HTTP_PORT")?.toIntOrNull() ?: 80
             try { server.addConnector(http80); println("[Gateway] HTTP on port 80") } catch (e: Exception) { println("[Gateway] Port 80 unavailable: ${e.message}") }
         }
 
@@ -140,15 +140,13 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         if (domain != null && port != 443) {
             try {
                 val sslCtx = org.eclipse.jetty.util.ssl.SslContextFactory.Server().apply {
-                    keyStorePath = null
-                    setCertAlias(domain.name)
                     setPemConfig(domain)
                 }
                 val httpsConfig = HttpConfiguration().apply { sendServerVersion = false; addCustomizer(org.eclipse.jetty.server.SecureRequestCustomizer()) }
                 val tls = ServerConnector(server, sslCtx, HttpConnectionFactory(httpsConfig))
-                tls.host = "0.0.0.0"; tls.port = 443
+                tls.host = "0.0.0.0"; tls.port = System.getenv("TLS_PORT")?.toIntOrNull() ?: 443
                 server.addConnector(tls)
-                println("[Gateway] HTTPS on port 443 (cert: ${domain.name})")
+                println("[Gateway] HTTPS on port ${tls.port} (cert: ${domain.name})")
             } catch (e: Exception) { println("[Gateway] TLS setup failed: ${e.message}") }
         }
 
@@ -187,7 +185,9 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
             .replace("-----BEGIN RSA PRIVATE KEY-----", "").replace("-----END RSA PRIVATE KEY-----", "")
             .replace("\\s".toRegex(), "")
         val keyBytes = java.util.Base64.getDecoder().decode(keyPem)
-        val key = java.security.KeyFactory.getInstance("RSA").generatePrivate(java.security.spec.PKCS8EncodedKeySpec(keyBytes))
+        val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
+        val key = try { java.security.KeyFactory.getInstance("RSA").generatePrivate(keySpec) }
+                  catch (_: Exception) { java.security.KeyFactory.getInstance("EC").generatePrivate(keySpec) }
 
         ks.setKeyEntry("cert", key, charArrayOf(), chain)
         this.keyStore = ks
@@ -195,6 +195,12 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
     }
     fun getGateway() = gateway
     fun isAuthorized(req: HttpServletRequest): Boolean {
+        val token = req.cookies?.find { it.name == "gateway_session" }?.value
+        val auth = req.getHeader("Authorization")
+        val bearer = if (auth?.startsWith("Bearer ") == true) auth.removePrefix("Bearer ").trim() else null
+        return (token != null && sessions[token] != null) || (bearer != null && bearer == gateway.getConfig().apiKey)
+    }
+    fun isApiAuthorized(req: HttpServletRequest): Boolean {
         val token = req.cookies?.find { it.name == "gateway_session" }?.value
         val auth = req.getHeader("Authorization")
         val bearer = if (auth?.startsWith("Bearer ") == true) auth.removePrefix("Bearer ").trim() else null
@@ -207,6 +213,15 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         val bearer = if (auth?.startsWith("Bearer ") == true) auth.removePrefix("Bearer ").trim() else null
         if (bearer == gateway.getConfig().apiKey) return "admin"
         return findUser(bearer ?: "")?.name ?: "unknown"
+    }
+    fun checkUserProviderAccess(req: HttpServletRequest, providerName: String) {
+        val auth = req.getHeader("Authorization")
+        val bearer = if (auth?.startsWith("Bearer ") == true) auth.removePrefix("Bearer ").trim() else null
+        if (bearer == gateway.getConfig().apiKey) return // admin has full access
+        val user = findUser(bearer ?: "") ?: return // session-based users (portal) have full access
+        if (user.providers.isNotEmpty() && user.providers.none { providerName.startsWith(it) }) {
+            throw APIError("Access denied: ${user.name} cannot use provider $providerName", 403)
+        }
     }
 }
 
@@ -221,22 +236,31 @@ fun main(args: Array<String>) {
 }
 
 class LoginServlet : HttpServlet() {
+    private val csrfTokens = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
         if (ctx.isBlocked(req.remoteAddr)) { resp.status = 429; resp.writer.write("Too many failed attempts. Try again later."); return }
-        resp.contentType = "text/html; charset=utf-8"; resp.writer.write(LOGIN_HTML)
+        // Prune expired tokens (>10min)
+        val now = System.currentTimeMillis()
+        csrfTokens.entries.removeIf { now - it.value > 600_000 }
+        val csrf = UUID.randomUUID().toString()
+        csrfTokens[csrf] = now
+        resp.contentType = "text/html; charset=utf-8"
+        resp.writer.write(LOGIN_HTML.replace("<!--CSRF-->", "<input type=\"hidden\" name=\"csrf\" value=\"$csrf\">"))
     }
     override fun doPost(req: HttpServletRequest, resp: HttpServletResponse) {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
         val ip = req.remoteAddr
         if (ctx.isBlocked(ip)) { resp.status = 429; resp.writer.write("Too many failed attempts. Try again later."); return }
+        val csrf = req.getParameter("csrf") ?: ""
+        if (csrf.isEmpty() || csrfTokens.remove(csrf) == null) { resp.status = 403; resp.contentType = "text/html; charset=utf-8"; resp.writer.write(LOGIN_HTML.replace("<!--ERROR-->", "<p style='color:#f44336'>Session expired. Please refresh.</p>")); return }
         val pw = req.getParameter("password") ?: ""
-        if (pw == ctx.getGateway().getConfig().apiKey || ctx.findUser(pw) != null) {
-            val user = ctx.findUser(pw)?.name ?: "admin"
+        if (pw == ctx.getGateway().getConfig().apiKey) {
             val token = UUID.randomUUID().toString()
-            ctx.sessions[token] = GatewayServer.SessionInfo(token, user)
+            ctx.sessions[token] = GatewayServer.SessionInfo(token, "admin")
             resp.addCookie(Cookie("gateway_session", token).apply { path = "/"; maxAge = 86400 * 7; isHttpOnly = true })
-            ctx.audit(user, "login", "from $ip")
+            ctx.audit("admin", "login", "from $ip")
             resp.sendRedirect("/portal/")
         } else {
             ctx.recordFailedLogin(ip)
@@ -402,7 +426,7 @@ class ApiServlet : HttpServlet() {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
         if (req.method == "OPTIONS") { resp.setHeader("Access-Control-Allow-Origin", "*"); resp.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS"); resp.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization"); resp.status = 200; return }
         if (!ctx.checkRate(req.remoteAddr)) { resp.status = 429; resp.contentType = "application/json"; resp.writer.write(errResp("Rate limit exceeded", 429)); return }
-        if (!ctx.isAuthorized(req)) { resp.status = 401; resp.contentType = "application/json"; resp.writer.write(errResp("Unauthorized", 401)); return }
+        if (!ctx.isApiAuthorized(req)) { resp.status = 401; resp.contentType = "application/json"; resp.writer.write(errResp("Unauthorized", 401)); return }
         if (ctx.blocked) { resp.status = 503; resp.contentType = "application/json"; resp.writer.write(errResp("Server is blocked", 503)); return }
         val path = req.pathInfo ?: "/"
         val user = ctx.resolveUser(req)
@@ -410,7 +434,7 @@ class ApiServlet : HttpServlet() {
         ctx.requestCount++
         var status = 200
         try { when {
-            path == "/models" && req.method == "GET" -> handleModels(ctx, resp)
+            path == "/models" && req.method == "GET" -> handleModels(ctx, req, resp)
             path == "/chat/completions" && req.method == "POST" -> handleProxy(ctx, req, resp, path)
             path == "/completions" && req.method == "POST" -> handleProxy(ctx, req, resp, path)
             path == "/embeddings" && req.method == "POST" -> handleProxy(ctx, req, resp, path)
@@ -428,13 +452,18 @@ class ApiServlet : HttpServlet() {
         } } catch (e: Exception) { ctx.errorCount++; status = 500; ServerLog.add("Error: ${e.message}"); resp.status = 500; resp.contentType = "application/json"; val errJson = JsonObject().apply { add("error", JsonObject().apply { addProperty("message", e.message ?: "Internal error") }) }; resp.writer.write(errJson.toString()) }
         finally { ctx.addRequest(GatewayServer.RequestRecord(ctx.requestCount, System.currentTimeMillis(), "", path, status, System.currentTimeMillis() - start, user)) }
     }
-    private fun handleModels(ctx: GatewayServer, resp: HttpServletResponse) {
+    private fun handleModels(ctx: GatewayServer, req: HttpServletRequest, resp: HttpServletResponse) {
         val ts = System.currentTimeMillis() / 1000; val a = JsonArray()
         val all = ctx.getGateway().getAllProviders()
         val parentNames = all.filter { it.name.contains("/") }.map { it.name.substringBefore("/") }.toSet()
         val seen = mutableSetOf<String>()
+        // Resolve user's allowed providers
+        val auth = req.getHeader("Authorization")
+        val bearer = if (auth?.startsWith("Bearer ") == true) auth.removePrefix("Bearer ").trim() else null
+        val userProviders = if (bearer != null && bearer != ctx.getGateway().getConfig().apiKey) ctx.findUser(bearer)?.providers ?: emptyList() else emptyList()
         all.filter { it.enabled && it.model.isNotBlank() }.forEach { p ->
             if (!p.name.contains("/") && p.name in parentNames) return@forEach
+            if (userProviders.isNotEmpty() && userProviders.none { p.name.startsWith(it) }) return@forEach
             val id = p.displayId.ifEmpty { "${p.name.substringBefore("/")}/${p.model.replace("/", "-")}" }
             if (!seen.add(id.lowercase())) return@forEach
             a.add(JsonObject().apply { addProperty("id", id); addProperty("object", "model"); addProperty("created", ts); addProperty("owned_by", p.name.substringBefore("/")) })
@@ -448,10 +477,11 @@ class ApiServlet : HttpServlet() {
         val stream = rj.get("stream")?.asBoolean ?: false
         ServerLog.add("${endpoint}: model=$model stream=$stream")
         val provider = ctx.getGateway().resolveProvider(model)
+        ctx.checkUserProviderAccess(req, provider.name)
         // Override path to match the requested endpoint
         val p = provider.copy(path = endpoint)
         if (stream) {
-            resp.contentType = "text/event-stream"; resp.setHeader("Cache-Control", "no-cache"); resp.setHeader("Access-Control-Allow-Origin", "*")
+            resp.contentType = "text/event-stream; charset=utf-8"; resp.setHeader("Cache-Control", "no-cache"); resp.setHeader("Access-Control-Allow-Origin", "*")
             runBlocking { ctx.getGateway().callProviderStreaming(rj, p, onLog = { ServerLog.add(it) }, onChunk = { resp.writer.write("data: $it\n\n"); resp.writer.flush() }, onDone = {}) }
             resp.writer.write("data: [DONE]\n\n"); resp.writer.flush()
         } else {
@@ -464,6 +494,7 @@ class ApiServlet : HttpServlet() {
         val model = rj.get("model")?.asString ?: ""
         ServerLog.add("${endpoint}: model=$model")
         val provider = ctx.getGateway().resolveProvider(model)
+        ctx.checkUserProviderAccess(req, provider.name)
         val p = provider.copy(path = endpoint)
         val result = runBlocking { ctx.getGateway().callProviderBinary(rj, p) }
         resp.contentType = result.first
@@ -494,6 +525,7 @@ class ApiServlet : HttpServlet() {
         val model = req.getParameter("model") ?: ""
         ServerLog.add("${endpoint}: model=$model (multipart)")
         val provider = ctx.getGateway().resolveProvider(model)
+        ctx.checkUserProviderAccess(req, provider.name)
         val p = provider.copy(path = endpoint)
         val bodyBytes = req.inputStream.readBytes()
         val result = runBlocking { ctx.getGateway().callProviderRawBytes(bodyBytes, req.contentType, p) }

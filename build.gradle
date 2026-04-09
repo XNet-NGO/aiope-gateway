@@ -20,6 +20,8 @@ dependencies {
     implementation 'org.eclipse.jetty:jetty-http:9.4.54.v20240208'
     implementation 'org.eclipse.jetty:jetty-io:9.4.54.v20240208'
     implementation 'org.eclipse.jetty:jetty-security:9.4.54.v20240208'
+    implementation 'org.eclipse.jetty.websocket:websocket-server:9.4.54.v20240208'
+    implementation 'org.eclipse.jetty.websocket:websocket-servlet:9.4.54.v20240208'
     implementation 'org.mindrot:jbcrypt:0.4'
 }
 

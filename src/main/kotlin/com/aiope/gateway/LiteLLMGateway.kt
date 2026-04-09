@@ -201,7 +201,7 @@ class LiteLLMGateway(
             // gen.pollinations.ai supports standard /models endpoint, fall through to fetch
         }
 
-        if (provider.apiKey.isEmpty()) {
+        if (provider.apiKey.isEmpty() && !apiBase.contains("localhost") && !apiBase.contains("127.0.0.1")) {
             throw APIError("API key required to load models", 400)
         }
 
@@ -293,10 +293,6 @@ class LiteLLMGateway(
             val apiBase = provider.apiBase.ifEmpty { "https://api.openai.com/v1" }
             requestJson.addProperty("model", provider.model)
             requestJson.remove("stream")
-            if (requestJson.has("max_tokens")) {
-                requestJson.addProperty("max_completion_tokens", requestJson.get("max_tokens").asInt)
-                requestJson.remove("max_tokens")
-            }
 
             // Cache lookup
             val key = if (cacheEnabled) cacheKey(provider.model, requestJson.get("messages"), requestJson.get("temperature")?.toString() ?: "") else null
@@ -368,10 +364,6 @@ class LiteLLMGateway(
         val payload = JsonParser.parseString(gson.toJson(requestJson)).asJsonObject
         payload.addProperty("model", provider.model)
         payload.addProperty("stream", true)
-        if (payload.has("max_tokens")) {
-            payload.addProperty("max_completion_tokens", payload.get("max_tokens").asInt)
-            payload.remove("max_tokens")
-        }
 
         val req = Request.Builder().url("$apiBase${provider.path}")
             .apply { if (provider.apiKey.isNotEmpty()) header("Authorization", "Bearer ${provider.apiKey}") }
