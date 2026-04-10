@@ -28,19 +28,23 @@ class DataServlet : HttpServlet() {
 
     override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
-        if (!ctx.isApiAuthorized(req)) { resp.status = 401; resp.contentType = "application/json"; resp.writer.write("""{"error":{"message":"Unauthorized"}}"""); return }
         resp.contentType = "application/json; charset=utf-8"
         resp.setHeader("Access-Control-Allow-Origin", "*")
 
         val q = req.getParameter("q") ?: ""
-        val lat = req.getParameter("lat") ?: ""
-        val lon = req.getParameter("lon") ?: ""
-        val extra = req.getParameter("extra") ?: ""
 
+        // Category listing is public
         if (q.isEmpty()) {
             resp.writer.write(G.toJson(mapOf("categories" to CATEGORIES.keys.sorted(), "usage" to "/v1/data?q=<category>&lat=<lat>&lon=<lon>")))
             return
         }
+
+        // All other queries require auth
+        if (!ctx.isApiAuthorized(req)) { resp.status = 401; resp.contentType = "application/json"; resp.writer.write("""{"error":{"message":"Unauthorized"}}"""); return }
+
+        val lat = req.getParameter("lat") ?: ""
+        val lon = req.getParameter("lon") ?: ""
+        val extra = req.getParameter("extra") ?: ""
 
         // Geocode endpoint
         if (q == "geocode" || q == "places") {
