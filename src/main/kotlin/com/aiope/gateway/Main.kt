@@ -236,7 +236,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         val bearer = if (auth?.startsWith("Bearer ") == true) auth.removePrefix("Bearer ").trim() else null
         if (bearer == gateway.getConfig().apiKey) return // admin has full access
         val user = findUser(bearer ?: "") ?: return // session-based users (portal) have full access
-        if (user.providers.isNotEmpty() && user.providers.none { providerName.startsWith(it) }) {
+        if (user.providers.isNotEmpty() && user.providers.none { providerName == it || providerName.startsWith("$it/") }) {
             throw APIError("Access denied: ${user.name} cannot use provider $providerName", 403)
         }
     }
@@ -481,7 +481,7 @@ class ApiServlet : HttpServlet() {
         val userProviders = if (bearer != null && bearer != ctx.getGateway().getConfig().apiKey) ctx.findUser(bearer)?.providers ?: emptyList() else emptyList()
         all.filter { it.enabled && it.model.isNotBlank() }.forEach { p ->
             if (!p.name.contains("/") && p.name in parentNames) return@forEach
-            if (userProviders.isNotEmpty() && userProviders.none { p.name.startsWith(it) }) return@forEach
+            if (userProviders.isNotEmpty() && userProviders.none { p.name == it || p.name.startsWith("$it/") }) return@forEach
             val id = p.displayId.ifEmpty { "${p.name.substringBefore("/")}/${p.model.replace("/", "-")}" }
             if (!seen.add(id.lowercase())) return@forEach
             a.add(JsonObject().apply { addProperty("id", id); addProperty("object", "model"); addProperty("created", ts); addProperty("owned_by", p.name.substringBefore("/")) })
