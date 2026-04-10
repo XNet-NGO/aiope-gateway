@@ -220,7 +220,18 @@ class DataServlet : HttpServlet() {
                 "ip-api"),
             "time" to Pair(
                 "https://timeapi.io/api/time/current/coordinate?latitude={lat}&longitude={lon}",
-                "timeapi.io")
+                "timeapi.io"),
+
+            // Cats
+            "cat" to Pair(
+                "https://api.thecatapi.com/v1/images/search?limit=5",
+                "thecatapi"),
+            "cat_breeds" to Pair(
+                "https://api.thecatapi.com/v1/breeds",
+                "thecatapi"),
+            "cat_breed" to Pair(
+                "https://api.thecatapi.com/v1/images/search?breed_ids={extra}&limit=3",
+                "thecatapi")
         )
     }
 }
