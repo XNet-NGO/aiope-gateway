@@ -47,14 +47,14 @@ docker run -d --name $IDLE --network host \
 # Wait for it to be ready
 echo "    Waiting for $IDLE to start..."
 for i in $(seq 1 10); do
-  if curl -sf http://localhost:$IDLE_P/v1/data > /dev/null 2>&1; then
+  if curl -sf -o /dev/null -w '%{http_code}' http://localhost:$IDLE_P/v1/data 2>/dev/null | grep -qE '401|200'; then
     echo "    $IDLE is up!"
     break
   fi
   sleep 1
 done
 
-if ! curl -sf http://localhost:$IDLE_P/v1/data > /dev/null 2>&1; then
+if ! curl -sf -o /dev/null -w '%{http_code}' http://localhost:$IDLE_P/v1/data 2>/dev/null | grep -qE '401|200'; then
   echo "ERROR: $IDLE failed to start. Aborting."
   docker logs $IDLE 2>&1 | tail -5
   exit 1
@@ -65,7 +65,7 @@ echo "[5/5] Switching Caddy: $LIVE_P → $IDLE_P"
 docker exec caddy-l4 sh -c "cat /config/caddy/autosave.json | sed s/$LIVE_P/$IDLE_P/g | tee /etc/caddy/caddy.json > /dev/null && caddy reload --config /etc/caddy/caddy.json"
 
 sleep 2
-if curl -sf https://inf.xnet.ngo/v1/data > /dev/null 2>&1; then
+if curl -s -o /dev/null -w '%{http_code}' https://inf.xnet.ngo/v1/data 2>/dev/null | grep -qE '401|200'; then
   echo ""
   echo "=== Deploy complete ==="
   echo "Live: $IDLE (:$IDLE_P)"
