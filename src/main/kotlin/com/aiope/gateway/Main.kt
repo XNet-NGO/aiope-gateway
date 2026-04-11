@@ -496,8 +496,10 @@ class ApiServlet : HttpServlet() {
         ServerLog.add("${endpoint}: model=$model stream=$stream")
         val provider = ctx.getGateway().resolveProvider(model)
         ctx.checkUserProviderAccess(req, provider.name)
-        // Override path to match the requested endpoint
-        val p = provider.copy(path = endpoint)
+        // Use provider's custom path if set, otherwise match the requested endpoint
+        val p = if (provider.path != "/chat/completions") provider else provider.copy(path = endpoint)
+        // Cloudflare AI /run/ endpoints only accept {prompt}, strip other fields
+        if (p.path.startsWith("/run/")) { val prompt = rj.get("prompt")?.asString ?: ""; rj.entrySet().map { it.key }.filter { it != "prompt" }.forEach { rj.remove(it) }; rj.addProperty("prompt", prompt) }
         if (stream) {
             resp.contentType = "text/event-stream; charset=utf-8"; resp.setHeader("Cache-Control", "no-cache"); resp.setHeader("Access-Control-Allow-Origin", "*")
             runBlocking { ctx.getGateway().callProviderStreaming(rj, p, onLog = { ServerLog.add(it) }, onChunk = { resp.writer.write("data: $it\n\n"); resp.writer.flush() }, onDone = {}) }
@@ -513,7 +515,7 @@ class ApiServlet : HttpServlet() {
         ServerLog.add("${endpoint}: model=$model")
         val provider = ctx.getGateway().resolveProvider(model)
         ctx.checkUserProviderAccess(req, provider.name)
-        val p = provider.copy(path = endpoint)
+        val p = if (provider.path != "/chat/completions") provider else provider.copy(path = endpoint)
         val result = runBlocking { ctx.getGateway().callProviderBinary(rj, p) }
         resp.contentType = result.first
         resp.setHeader("Access-Control-Allow-Origin", "*")
@@ -544,7 +546,7 @@ class ApiServlet : HttpServlet() {
         ServerLog.add("${endpoint}: model=$model (multipart)")
         val provider = ctx.getGateway().resolveProvider(model)
         ctx.checkUserProviderAccess(req, provider.name)
-        val p = provider.copy(path = endpoint)
+        val p = if (provider.path != "/chat/completions") provider else provider.copy(path = endpoint)
         val bodyBytes = req.inputStream.readBytes()
         val result = runBlocking { ctx.getGateway().callProviderRawBytes(bodyBytes, req.contentType, p) }
         resp.contentType = "application/json"; resp.setHeader("Access-Control-Allow-Origin", "*"); resp.writer.write(result)

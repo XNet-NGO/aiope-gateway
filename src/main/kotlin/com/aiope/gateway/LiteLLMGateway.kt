@@ -293,6 +293,8 @@ class LiteLLMGateway(
             val apiBase = provider.apiBase.ifEmpty { "https://api.openai.com/v1" }
             requestJson.addProperty("model", provider.model)
             requestJson.remove("stream")
+            // Cloudflare /run/ endpoints only accept {prompt}
+            if (provider.path.startsWith("/run/")) { requestJson.remove("model"); requestJson.remove("n"); requestJson.remove("size"); requestJson.remove("response_format") }
 
             // Cache lookup
             val key = if (cacheEnabled) cacheKey(provider.model, requestJson.get("messages"), requestJson.get("temperature")?.toString() ?: "") else null
