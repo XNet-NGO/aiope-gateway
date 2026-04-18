@@ -3,3 +3,4 @@ build/
 *.jar
 gateway.log
 data/config.json
+data/
