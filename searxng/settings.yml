@@ -1,0 +1,30 @@
+use_default_settings: true
+server:
+  port: 8888
+  bind_address: '0.0.0.0'
+  secret_key: '0b7afe33db6d932728e8fe1a054110e011ad6f328f528a934eddcf13a7da59ca'
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: 'GET'
+search:
+  safe_search: 0
+  default_lang: ''
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 60
+  suspended_times:
+    SearxEngineAccessDenied: 3600
+    SearxEngineCaptcha: 3600
+    SearxEngineTooManyRequests: 600
+    cf_SearxEngineCaptcha: 3600
+    cf_SearxEngineAccessDenied: 3600
+    recaptcha_SearxEngineCaptcha: 3600
+  formats:
+    - json
+outgoing:
+  request_timeout: 3.0
+  max_request_timeout: 10.0
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true
+  retries: 1

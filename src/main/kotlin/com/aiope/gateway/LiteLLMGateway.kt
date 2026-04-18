@@ -72,6 +72,44 @@ class LiteLLMGateway(
     @Volatile var cacheEnabled = true
     var cacheHits = 0L; var cacheMisses = 0L
 
+    // models.dev metadata cache
+    @Volatile private var modelsDevData: JsonObject? = null
+    @Volatile private var modelsDevLastFetch = 0L
+    private val modelsDevTtl = 3600_000L // 1 hour
+
+    fun getModelsDevMeta(modelId: String): JsonObject? {
+        refreshModelsDev()
+        val key = modelId.substringAfterLast("/").lowercase().replace(".", "-")
+        val data = modelsDevData ?: return null
+        for (provider in data.entrySet()) {
+            val pObj = provider.value?.asJsonObject ?: continue
+            val models = pObj.getAsJsonObject("models") ?: continue
+            // Try exact match first, then normalized
+            for (m in models.entrySet()) {
+                if (m.key.equals(modelId.substringAfterLast("/"), ignoreCase = true) ||
+                    m.key.replace(".", "-").equals(key, ignoreCase = true)) {
+                    return m.value?.asJsonObject
+                }
+            }
+        }
+        return null
+    }
+
+    private fun refreshModelsDev() {
+        if (modelsDevData != null && System.currentTimeMillis() - modelsDevLastFetch < modelsDevTtl) return
+        try {
+            val req = Request.Builder().url("https://models.dev/api.json")
+                .header("User-Agent", "AIOPE-Gateway/1.0").get().build()
+            val resp = http.newCall(req).execute()
+            if (resp.isSuccessful) {
+                modelsDevData = JsonParser.parseString(resp.body?.string() ?: "{}").asJsonObject
+                modelsDevLastFetch = System.currentTimeMillis()
+                log("models.dev: loaded ${modelsDevData?.size() ?: 0} providers")
+            }
+            resp.close()
+        } catch (e: Exception) { log("models.dev fetch failed: ${e.message}") }
+    }
+
     private fun cacheKey(model: String, messages: JsonElement?, extra: String = ""): String {
         val md = java.security.MessageDigest.getInstance("SHA-256")
         md.update(model.toByteArray())
@@ -297,7 +335,7 @@ class LiteLLMGateway(
             if (provider.path.startsWith("/run/")) { requestJson.remove("model"); requestJson.remove("n"); requestJson.remove("size"); requestJson.remove("response_format") }
 
             // Cache lookup
-            val key = if (cacheEnabled) cacheKey(provider.model, requestJson.get("messages"), requestJson.get("temperature")?.toString() ?: "") else null
+            val key = if (cacheEnabled) cacheKey(provider.model, requestJson.get("messages"), (requestJson.get("prompt")?.asString ?: "") + (requestJson.get("temperature")?.toString() ?: "") + (requestJson.get("seed")?.toString() ?: "")) else null
             if (key != null) {
                 cache.getIfPresent(key)?.let { synchronized(this@LiteLLMGateway) { cacheHits++ }; log("Cache hit"); return@withContext it }
                 synchronized(this@LiteLLMGateway) { cacheMisses++ }

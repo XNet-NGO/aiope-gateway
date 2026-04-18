@@ -25,6 +25,7 @@
   - `xnet-dev` — build container (JDK 17, Gradle), mounts `/workspace`
   - `llama` — local LLM inference
   - `xnet-web` — website on port 3000
+  - `searxng` — SearXNG metasearch engine on port 8888 (API-only, no UI)
 
 ---
 
@@ -103,6 +104,47 @@ docker exec caddy-l4 sh -c "cat /config/caddy/autosave.json | sed s/8082/8083/g 
 - The build runs inside `xnet-dev` because the host has no JDK
 - Caddy config is a bind-mounted JSON file — use `tee` to overwrite (not `cp` or `sed -i`, they fail on bind mounts)
 - The gateway's `/v1/data` endpoint (no `q` param) is public — returns available data categories without auth
+
+---
+
+## SearXNG (Web Search)
+
+The gateway exposes web search via a local SearXNG instance. The Android app defines a `search_web` tool for the LLM — when invoked, the app calls the gateway which proxies to SearXNG.
+
+### How it works
+```
+LLM calls search_web tool → App calls /v1/data?q=search_web&query=... → Gateway → SearXNG (localhost:8888) → aggregated results from Google, Brave, DuckDuckGo, Startpage
+```
+
+### API
+```
+GET /v1/data?q=search_web&query=<search terms>
+Authorization: Bearer <api-key>
+```
+
+Response follows the standard data envelope:
+```json
+{"category": "search_web", "source": "searxng", "timestamp": ..., "data": {"query": "...", "results": [{"title": "...", "url": "...", "content": "...", "engine": "google", "score": 16.0}, ...]}}
+```
+
+### Container setup
+```bash
+docker run -d --name searxng --network host \
+  -e SEARXNG_PORT=8888 \
+  -e SEARXNG_BIND_ADDRESS=0.0.0.0 \
+  -v /workspace/aiope-gateway/searxng/settings.yml:/etc/searxng/settings.yml \
+  --restart unless-stopped \
+  searxng/searxng:latest
+```
+
+### Important notes
+- Config lives at `/workspace/aiope-gateway/searxng/settings.yml`
+- Do NOT mount settings.yml as `:ro` — the entrypoint needs to `chown` it
+- Port is set via `SEARXNG_PORT` env var (settings.yml `server.port` alone isn't enough)
+- Runs on `--network host` so both blue/green gateway containers reach it at `localhost:8888`
+- No Redis/Valkey needed — limiter is disabled (private instance)
+- Results are cached 5 minutes gateway-side (same as all data categories)
+- ahmia/torch engine errors in logs are harmless (Tor engines, not available)
 
 ---
 

@@ -484,7 +484,20 @@ class ApiServlet : HttpServlet() {
             if (userProviders.isNotEmpty() && userProviders.none { p.name == it || p.name.startsWith("$it/") }) return@forEach
             val id = p.displayId.ifEmpty { "${p.name.substringBefore("/")}/${p.model.replace("/", "-")}" }
             if (!seen.add(id.lowercase())) return@forEach
-            a.add(JsonObject().apply { addProperty("id", id); addProperty("object", "model"); addProperty("created", ts); addProperty("owned_by", p.name.substringBefore("/")) })
+            val meta = ctx.getGateway().getModelsDevMeta(p.model)
+            a.add(JsonObject().apply {
+                addProperty("id", id); addProperty("object", "model"); addProperty("created", ts); addProperty("owned_by", p.name.substringBefore("/"))
+                if (meta != null) {
+                    meta.get("reasoning")?.let { addProperty("reasoning", it.asBoolean) }
+                    meta.get("tool_call")?.let { addProperty("tool_call", it.asBoolean) }
+                    meta.get("attachment")?.let { addProperty("attachment", it.asBoolean) }
+                    meta.get("temperature")?.let { addProperty("temperature", it.asBoolean) }
+                    meta.getAsJsonObject("limit")?.let { l -> l.get("context")?.let { addProperty("context_window", it.asInt) }; l.get("output")?.let { addProperty("max_output", it.asInt) } }
+                    meta.getAsJsonObject("modalities")?.let { add("modalities", it) }
+                    meta.get("name")?.let { addProperty("display_name", it.asString) }
+                    meta.get("family")?.let { addProperty("family", it.asString) }
+                }
+            })
         }
         resp.contentType = "application/json"; resp.setHeader("Access-Control-Allow-Origin", "*")
         resp.writer.write(JsonObject().apply { addProperty("object", "list"); add("data", a) }.toString())
@@ -1005,7 +1018,7 @@ class UsersServlet : HttpServlet() {
         val path = req.pathInfo?.removePrefix("/") ?: ""
         when {
             path == "" && req.method == "GET" -> {
-                val users = ctx.getUsers().map { mapOf("name" to it.name, "role" to it.role, "providers" to it.providers, "apiKey" to "${it.apiKey.take(8)}...") }
+                val users = ctx.getUsers().map { mapOf("name" to it.name, "role" to it.role, "providers" to it.providers, "apiKey" to it.apiKey) }
                 resp.writer.write(ctx.gson.toJson(mapOf("users" to users)))
             }
             path == "" && req.method == "POST" -> {
@@ -1017,6 +1030,16 @@ class UsersServlet : HttpServlet() {
                 ctx.addUser(GatewayServer.UserAccount(name, key, role, providers))
                 ctx.audit(ctx.resolveUser(req), "user_add", name)
                 resp.writer.write(jsonResp("status" to "ok", "apiKey" to key))
+            }
+            path.isNotEmpty() && req.method == "PUT" -> {
+                val j = JsonParser.parseString(req.reader.readText()).asJsonObject
+                val user = ctx.findUser(ctx.getUsers().find { it.name == path }?.apiKey ?: "") ?: throw IllegalArgumentException("User not found: $path")
+                val providers = j.get("providers")?.asJsonArray?.map { it.asString } ?: user.providers
+                val role = j.get("role")?.asString ?: user.role
+                ctx.removeUser(path)
+                ctx.addUser(GatewayServer.UserAccount(user.name, user.apiKey, role, providers))
+                ctx.audit(ctx.resolveUser(req), "user_update", "$path providers=${providers.joinToString(",")}")
+                resp.writer.write(jsonResp("status" to "ok"))
             }
             path.isNotEmpty() && req.method == "DELETE" -> {
                 ctx.removeUser(path)

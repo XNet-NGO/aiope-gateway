@@ -37,7 +37,7 @@ class DataServlet : HttpServlet() {
         if (!ctx.isApiAuthorized(req)) { resp.status = 401; resp.contentType = "application/json"; resp.writer.write("""{"error":{"message":"Unauthorized"}}"""); return }
 
         if (q.isEmpty()) {
-            resp.writer.write(G.toJson(mapOf("categories" to CATEGORIES.keys.sorted(), "usage" to "/v1/data?q=<category>&lat=<lat>&lon=<lon>")))
+            resp.writer.write(G.toJson(mapOf("categories" to (CATEGORIES.keys + "search_web" + "image_search").sorted(), "usage" to "/v1/data?q=<category>&lat=<lat>&lon=<lon>")))
             return
         }
 
@@ -67,6 +67,46 @@ class DataServlet : HttpServlet() {
             val result = G.toJson(mapOf("category" to q, "source" to "geoapify", "timestamp" to System.currentTimeMillis(),
                 "data" to try { JsonParser.parseString(geoBody) } catch (_: Exception) { JsonPrimitive(geoBody.take(8000)) }))
             cache.put("$q|$query|$lat|$lon", result)
+            resp.writer.write(result); return
+        }
+
+        // Web search via SearXNG
+        if (q == "search_web") {
+            val query = (req.getParameter("query") ?: "").ifEmpty { extra }
+            if (query.isEmpty()) { resp.status = 400; resp.writer.write("""{"error":{"message":"Missing 'query' or 'extra' parameter"}}"""); return }
+            val cacheKey = "search_web|$query"
+            val cached = cache.getIfPresent(cacheKey)
+            if (cached != null) { ServerLog.add("Data cache hit: search_web"); resp.writer.write(cached); return }
+            val enc = java.net.URLEncoder.encode(query, "UTF-8")
+            val url = "http://localhost:8888/search?q=$enc&format=json"
+            ServerLog.add("SearXNG: $query")
+            val body = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                if (!r.isSuccessful) { resp.status = 502; resp.writer.write(G.toJson(mapOf("error" to mapOf("message" to "SearXNG error: HTTP ${r.code}")))); return }
+                r.body?.string() ?: ""
+            }
+            val result = G.toJson(mapOf("category" to "search_web", "source" to "searxng", "timestamp" to System.currentTimeMillis(),
+                "data" to try { JsonParser.parseString(body) } catch (_: Exception) { JsonPrimitive(body.take(8000)) }))
+            cache.put(cacheKey, result)
+            resp.writer.write(result); return
+        }
+
+        // Image search via SearXNG
+        if (q == "image_search") {
+            val query = (req.getParameter("query") ?: "").ifEmpty { extra }
+            if (query.isEmpty()) { resp.status = 400; resp.writer.write("""{"error":{"message":"Missing 'query' or 'extra' parameter"}}"""); return }
+            val cacheKey = "image_search|$query"
+            val cached = cache.getIfPresent(cacheKey)
+            if (cached != null) { ServerLog.add("Data cache hit: image_search"); resp.writer.write(cached); return }
+            val enc = java.net.URLEncoder.encode(query, "UTF-8")
+            val url = "http://localhost:8888/search?q=$enc&categories=images&format=json"
+            ServerLog.add("SearXNG images: $query")
+            val body = http.newCall(Request.Builder().url(url).build()).execute().use { r ->
+                if (!r.isSuccessful) { resp.status = 502; resp.writer.write(G.toJson(mapOf("error" to mapOf("message" to "SearXNG error: HTTP ${r.code}")))); return }
+                r.body?.string() ?: ""
+            }
+            val result = G.toJson(mapOf("category" to "image_search", "source" to "searxng", "timestamp" to System.currentTimeMillis(),
+                "data" to try { JsonParser.parseString(body) } catch (_: Exception) { JsonPrimitive(body.take(8000)) }))
+            cache.put(cacheKey, result)
             resp.writer.write(result); return
         }
 

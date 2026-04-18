@@ -87,7 +87,7 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 </div>
 </div>
 <div class="card">
-<div class="card-title">Users <button class="btn btn-start" style="padding:4px 12px;font-size:12px" onclick="addUser()">+ Add</button></div>
+<div class="card-title">Users <button class="btn btn-start" style="padding:4px 12px;font-size:12px" onclick="openUserModal()">+ Add</button></div>
 <div id="userList"></div>
 </div>
 <div class="card">
@@ -179,7 +179,7 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 <div class="card-title">Audit Log <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="loadAudit()">Refresh</button></div>
 <div id="auditList" style="max-height:200px;overflow-y:auto;font-size:11px;font-family:monospace"></div>
 </div>
-<div class="card">
+<div class="card full">
 <div class="card-title">Server Log <button class="btn btn-stop" style="padding:4px 8px;font-size:11px" onclick="document.getElementById('logBox').innerHTML=''">Clear</button></div>
 <div class="log-box" id="logBox"></div>
 </div>
@@ -309,16 +309,57 @@ document.getElementById('keyModal').classList.add('show');
 loadConfig()}).catch(function(e){alert('Rotation failed: '+e.message)})}
 function copyKey(){var v=document.getElementById('keyModalValue').textContent;navigator.clipboard.writeText(v).then(function(){document.getElementById('keyModalValue').style.borderColor='#4caf50'})}
 function closeKeyModal(){document.getElementById('keyModal').classList.remove('show')}
+var _allProviders=[];var _allUsers=[];
 function loadUsers(){fetch('/api/users').then(function(r){return r.json()}).then(function(d){
-var h='';(d.users||[]).forEach(function(u){
-h+='<div style="display:flex;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #222;font-size:12px">';
-h+='<span style="color:#fff;min-width:80px">'+u.name+'</span>';
-h+='<span style="color:#888;font-size:11px">'+u.role+'</span>';
-h+='<span style="color:#666;font-family:monospace;font-size:11px;flex:1">'+u.apiKey+'</span>';
+_allUsers=d.users||[];var h='';_allUsers.forEach(function(u){
+h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #222;font-size:12px">';
+h+='<span style="color:#fff;min-width:70px;font-weight:600">'+u.name+'</span>';
+h+='<span style="background:'+(u.role==='admin'?'#7c4dff':'#333')+';color:#fff;padding:1px 8px;border-radius:10px;font-size:10px">'+u.role+'</span>';
+h+='<span style="flex:1;display:flex;flex-wrap:wrap;gap:3px">';
+if(!u.providers||u.providers.length===0){h+='<span style="color:#4caf50;font-size:10px">all providers</span>'}
+else{u.providers.forEach(function(p){h+='<span style="background:#2d2d2d;color:#aaa;padding:1px 6px;border-radius:8px;font-size:10px">'+p+'</span>'})}
+h+='</span>';
+h+='<span style="color:#7c4dff;font-size:11px;cursor:pointer;margin-right:4px" onclick="editUser(\''+u.name+'\')">&#9998;</span>';
 h+='<span style="color:#f44336;font-size:11px;cursor:pointer" onclick="deleteUser(\''+u.name+'\')">x</span></div>'});
 if(!h)h='<div style="color:#666;font-size:12px">No additional users. Admin uses the gateway API key.</div>';
 document.getElementById('userList').innerHTML=h}).catch(function(){})}
-function addUser(){var name=prompt('Username:');if(!name)return;fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(r){return r.json()}).then(function(d){if(d.apiKey){document.getElementById('keyModalValue').textContent=d.apiKey;document.querySelector('#keyModal h2').textContent='User: '+name;document.getElementById('keyModal').classList.add('show')}loadUsers()})}
+function loadProviderList(){fetch('/api/config/providers').then(function(r){return r.json()}).then(function(d){_allProviders=d||[]})}
+function renderProviderCheckboxes(selected){
+var el=document.getElementById('userModalProviders');if(!el)return;
+var groups={};
+_allProviders.forEach(function(p){var base=p.name.split('/')[0];if(!groups[base])groups[base]=[];if(p.name.indexOf('/')>=0)groups[base].push(p)});
+var h='';Object.keys(groups).sort().forEach(function(base){
+var isBase=selected.indexOf(base)>=0;
+h+='<div style="margin-bottom:8px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:#fff">';
+h+='<input type="checkbox" value="'+base+'" class="upc"'+(isBase?' checked':'')+' onchange="toggleProviderGroup(this)"> <b>'+base+'</b></label>';
+groups[base].forEach(function(sub){
+var isChecked=selected.indexOf(sub.name)>=0||selected.indexOf(sub.displayId)>=0;
+h+='<label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;color:#aaa;margin-left:20px;margin-top:2px">';
+h+='<input type="checkbox" value="'+sub.displayId+'" class="upc"'+(isChecked?' checked':'')+'> '+sub.displayId.replace(base+'/','')+'</label>'});
+h+='</div>'});
+el.innerHTML=h||'<div style="color:#666;font-size:12px">No providers configured</div>'}
+function toggleProviderGroup(cb){var base=cb.value;document.querySelectorAll('.upc').forEach(function(c){if(c.value.startsWith(base+'/'))c.checked=cb.checked})}
+function getSelectedProviders(){var sel=[];document.querySelectorAll('.upc:checked').forEach(function(c){sel.push(c.value)});return sel}
+function openUserModal(name){
+document.getElementById('userModalTitle').textContent=name?'Edit User: '+name:'Add User';
+document.getElementById('userModalName').value=name||'';
+document.getElementById('userModalName').disabled=!!name;
+document.getElementById('userModalRole').value='user';
+document.getElementById('userModalKeyRow').style.display=name?'block':'none';
+document.getElementById('userModalKey').value='';
+var sel=[];
+if(name){var u=_allUsers.find(function(x){return x.name===name});if(u){sel=u.providers||[];document.getElementById('userModalRole').value=u.role;document.getElementById('userModalKey').value=u.apiKey}}
+renderProviderCheckboxes(sel);
+document.getElementById('userModal').classList.add('show')}
+function closeUserModal(){document.getElementById('userModal').classList.remove('show')}
+function editUser(name){openUserModal(name)}
+function saveUser(){
+var name=document.getElementById('userModalName').value.trim();if(!name){alert('Name required');return}
+var role=document.getElementById('userModalRole').value;
+var providers=getSelectedProviders();
+var isEdit=document.getElementById('userModalName').disabled;
+if(isEdit){fetch('/api/users/'+name,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({providers:providers,role:role})}).then(function(){closeUserModal();loadUsers()})}
+else{fetch('/api/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,role:role,providers:providers})}).then(function(r){return r.json()}).then(function(d){if(d.apiKey){document.getElementById('userModalName').disabled=true;document.getElementById('userModalKeyRow').style.display='block';document.getElementById('userModalKey').value=d.apiKey;document.getElementById('userModalTitle').textContent='User Created: '+name}loadUsers()})}}
 function deleteUser(name){if(!confirm('Delete user '+name+'?'))return;fetch('/api/users/'+name,{method:'DELETE'}).then(function(){loadUsers()})}
 function loadHistory(){fetch('/api/history').then(function(r){return r.json()}).then(function(d){
 var h='';(d.requests||[]).forEach(function(r){
@@ -341,7 +382,7 @@ function loadKeys(){fetch("/api/keys").then(function(r){return r.json()}).then(f
 function saveKeys(){var inputs=document.querySelectorAll("#keysList input[data-key]");var data={};inputs.forEach(function(i){var v=i.value.trim();if(v&&!v.includes("..."))data[i.dataset.key]=v});fetch("/api/keys",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(){loadKeys()})}
 function addKey(){var n=document.getElementById("newKeyName").value.trim();var v=document.getElementById("newKeyValue").value.trim();if(!n||!v)return;var d={};d[n]=v;fetch("/api/keys",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(){document.getElementById("newKeyName").value="";document.getElementById("newKeyValue").value="";loadKeys()})}
 function deleteKey(name){if(!confirm("Delete key: "+name+"?"))return;fetch("/api/keys/"+name,{method:"DELETE"}).then(function(){loadKeys()})}
-function init(){loadProviders();loadConfig();loadNetwork();loadWifi();loadCerts();loadUsers();loadKeys();loadHistory();loadAudit();loadWebhook();fileBrowse('/opt/gateway/data');refreshHealth();refreshStats();setInterval(refreshHealth,3000);setInterval(refreshStats,5000);setInterval(pollLogs,2000);pollLogs()}
+function init(){loadProviders();loadProviderList();loadConfig();loadNetwork();loadWifi();loadCerts();loadUsers();loadKeys();loadHistory();loadAudit();loadWebhook();fileBrowse('/opt/gateway/data');refreshHealth();refreshStats();setInterval(refreshHealth,3000);setInterval(refreshStats,5000);setInterval(pollLogs,2000);pollLogs()}
 function refreshHealth(){fetch('/health').then(function(r){return r.json()}).then(function(d){document.getElementById('status').textContent=d.blocked?'Blocked':'Running';document.getElementById('status').style.color=d.blocked?'#f44336':'#4caf50';document.getElementById('count').textContent=d.providers})}
 function refreshStats(){fetch('/api/stats').then(function(r){return r.json()}).then(function(d){
 document.getElementById('st-uptime').textContent=d.uptime||'-';
@@ -557,7 +598,7 @@ function deleteProvider(name){if(!confirm('Remove provider "'+name+'"?'))return;
 function showAddProvider(){var name=prompt('Provider name:');if(!name||!name.trim())return;name=name.trim();fetch('/api/config/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,apiBase:'',model:''})}).then(function(r){return r.json()}).then(function(d){if(d.error)alert(d.error.message);else loadProviders()}).catch(function(e){alert(e.message)})}
 init();
 </script>
-<div class="container">
+<div class="container" style="display:block">
 <div class="card full">
 <div class="card-title">Manual <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="var m=document.getElementById('manualBody');m.style.display=m.style.display==='none'?'':'none'">Toggle</button></div>
 <div id="manualBody" style="display:none;font-size:13px;line-height:1.6;color:#ccc;max-height:600px;overflow-y:auto;padding:8px">
@@ -766,6 +807,37 @@ sudo systemctl enable --now aiope-gateway</pre>
 </table>
 
 <p style="color:#555;margin-top:16px;font-size:11px">AIOPE Gateway by XNet | xnet.ngo</p>
+</div>
+</div>
+</div>
+<div class="modal-overlay" id="userModal">
+<div class="modal-box" style="max-width:480px">
+<h2 id="userModalTitle">Add User</h2>
+<div style="margin-bottom:12px">
+<label style="font-size:12px;color:#aaa">Username</label>
+<input id="userModalName" style="width:100%;padding:8px;background:#3d3d3d;border:1px solid #555;border-radius:6px;color:#fff;font-size:14px;box-sizing:border-box;margin-top:4px" placeholder="e.g. josh">
+</div>
+<div style="margin-bottom:12px">
+<label style="font-size:12px;color:#aaa">Role</label>
+<select id="userModalRole" style="width:100%;padding:8px;background:#3d3d3d;border:1px solid #555;border-radius:6px;color:#fff;font-size:14px;box-sizing:border-box;margin-top:4px">
+<option value="user">user</option>
+<option value="admin">admin</option>
+</select>
+</div>
+<div style="margin-bottom:12px">
+<label style="font-size:12px;color:#aaa">Provider Access <span style="color:#666">(none checked = all access)</span></label>
+<div id="userModalProviders" style="max-height:200px;overflow-y:auto;margin-top:6px;padding:8px;background:#2a2a2a;border-radius:6px"></div>
+</div>
+<div id="userModalKeyRow" style="display:none;margin-bottom:12px">
+<label style="font-size:12px;color:#aaa">API Key</label>
+<div style="display:flex;gap:6px;margin-top:4px">
+<input id="userModalKey" readonly style="flex:1;padding:8px;background:#1a1a1a;border:1px solid #555;border-radius:6px;color:#7c4dff;font-family:monospace;font-size:12px;box-sizing:border-box">
+<button class="btn btn-save" style="padding:6px 12px;font-size:11px" onclick="navigator.clipboard.writeText(document.getElementById('userModalKey').value)">Copy</button>
+</div>
+</div>
+<div class="modal-actions">
+<button class="btn btn-save" onclick="saveUser()">Save</button>
+<button class="btn btn-load" onclick="closeUserModal()">Cancel</button>
 </div>
 </div>
 </div>
