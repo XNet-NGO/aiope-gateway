@@ -1,0 +1,90 @@
+---
+- name: XNet Gateway - Red/Blue Deploy
+  hosts: all
+  become: yes
+  vars:
+    gateway_jar: /opt/gateway/gateway-server-all.jar
+    data_dir: /opt/gateway/data
+    blue_port: 8082
+    red_port: 8083
+    active_color: "{{ lookup('file', '/opt/gateway/active-color', errors='ignore') | default('blue', true) }}"
+    deploy_color: "{{ 'red' if active_color == 'blue' else 'blue' }}"
+    deploy_port: "{{ red_port if deploy_color == 'red' else blue_port }}"
+
+  tasks:
+    - name: Deploy plan
+      debug:
+        msg: "Deploying {{ deploy_color }} on port {{ deploy_port }} (active: {{ active_color }})"
+
+    - name: Ensure directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: ubuntu
+      loop: [/opt/gateway, "{{ data_dir }}"]
+
+    - name: Copy gateway jar
+      copy:
+        src: build/libs/gateway-server-all.jar
+        dest: "{{ gateway_jar }}"
+        owner: ubuntu
+
+    - name: Systemd unit
+      copy:
+        dest: "/etc/systemd/system/gateway-{{ deploy_color }}.service"
+        content: |
+          [Unit]
+          Description=AIOPE Gateway ({{ deploy_color }})
+          After=network.target
+          [Service]
+          Type=simple
+          User=ubuntu
+          ExecStart=/usr/bin/java -Xmx256m -jar {{ gateway_jar }} {{ deploy_port }} {{ data_dir }}
+          Restart=on-failure
+          RestartSec=5
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload and start
+      systemd:
+        daemon_reload: yes
+        name: "gateway-{{ deploy_color }}"
+        state: restarted
+        enabled: yes
+
+    - name: Health check
+      uri:
+        url: "http://127.0.0.1:{{ deploy_port }}/health"
+        status_code: 200
+      retries: 10
+      delay: 2
+      register: health
+      until: health.status == 200
+
+    - name: Swap Caddy to {{ deploy_color }}
+      shell: |
+        sed -i 's/reverse_proxy 127.0.0.1:808[0-9]/reverse_proxy 127.0.0.1:{{ deploy_port }}/' /tmp/caddy-etc/Caddyfile
+        docker restart caddy
+      args:
+        warn: false
+
+    - name: Record active color
+      copy:
+        dest: /opt/gateway/active-color
+        content: "{{ deploy_color }}"
+
+    - name: Stop old {{ active_color }}
+      systemd:
+        name: "gateway-{{ active_color }}"
+        state: stopped
+      ignore_errors: yes
+
+    - name: Verify external
+      uri:
+        url: "https://inf.xnet.ngo/health"
+        status_code: 200
+      register: final
+
+    - name: Done
+      debug:
+        msg: "✅ {{ deploy_color }} live. {{ final.json }}"
