@@ -504,7 +504,8 @@ class LiteLLMGateway(
                 ProviderConfig(name = "cloudflare", model = "", apiKey = "", apiBase = "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1", enabled = true),
                 ProviderConfig(name = "cline", model = "", apiKey = "", apiBase = "https://api.cline.bot/api/v1", enabled = true),
                 ProviderConfig(name = "zen", model = "", apiKey = "", apiBase = "https://opencode.ai/zen/v1", enabled = true),
-                ProviderConfig(name = "pollinations", model = "", apiKey = "", apiBase = "https://text.pollinations.ai/openai", enabled = true)
+                ProviderConfig(name = "pollinations", model = "", apiKey = "", apiBase = "https://text.pollinations.ai/openai", enabled = true),
+                ProviderConfig(name = "nvidia", model = "", apiKey = "", apiBase = "https://integrate.api.nvidia.com/v1", enabled = true)
             ),
             routingStrategy = "direct",
             fallbackEnabled = false

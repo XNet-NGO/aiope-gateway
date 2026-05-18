@@ -85,6 +85,7 @@ Default API key: `aiope-gateway-key` — change immediately after first login.
 | Zen (OpenCode) | opencode.ai | None | Free models |
 | Bedrock Mantle | bedrock-mantle.*.api.aws | Bedrock API key | OSS models, live model discovery |
 | Bedrock Runtime | bedrock-runtime.*.amazonaws.com | Bedrock API key | Responses API support |
+| NVIDIA NIM | integrate.api.nvidia.com | nvapi-* key | 125+ models, 40 RPM free tier |
 
 ## API Endpoints
 
