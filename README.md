@@ -1,5 +1,7 @@
 # AIOPE Gateway
 
+[![Built with Pollinations.ai](https://img.shields.io/badge/Built_with-Pollinations.ai-blue)](https://pollinations.ai)
+
 OpenAI-compatible LLM proxy with a full web admin portal. Routes requests to multiple upstream providers through a single endpoint. Designed to run as a lightweight appliance on a Raspberry Pi, cloud instance, or any JVM host.
 
 ## Features
@@ -371,6 +373,10 @@ ttyd (port 7681) → Web shell
 | Gson | 2.10.1 |
 | Shadow (fat JAR) | 8.1.1 |
 | JVM target | 17+ |
+
+## Powered By
+
+- [Pollinations.ai](https://pollinations.ai) — Open-source generative AI platform
 
 ## License
 
