@@ -129,6 +129,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         handler.addServlet(WebhookServlet::class.java, "/api/webhooks/*")
 
         handler.addServlet(KeysServlet::class.java, "/api/keys/*")
+        handler.addServlet(RealtimeServlet::class.java, "/ws/voice")
         handler.setAttribute("gateway", this)
 
         // Main connector (default port)
