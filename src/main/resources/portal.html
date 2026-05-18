@@ -104,46 +104,8 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 <div class="info-item"><span class="label">Cache:</span><span class="value" id="st-cache">-</span></div>
 </div>
 </div>
-<div class="card">
-<div class="card-title">Network</div>
-<div id="netInfo"></div>
-<div class="key-row" style="margin-top:8px;flex-wrap:wrap;gap:6px">
-<input type="text" id="newHostname" placeholder="Set hostname" style="flex:1;min-width:120px">
-<button class="btn btn-save" onclick="setHostname()">Set</button>
-</div>
-<div class="key-row" style="margin-top:6px;flex-wrap:wrap;gap:6px">
-<input type="text" id="newDns" placeholder="DNS servers (comma-sep)" style="flex:1;min-width:120px">
-<button class="btn btn-save" onclick="setDns()">Set DNS</button>
-</div>
-</div>
-<div class="card">
-<div class="card-title">WiFi <button class="btn btn-load" style="padding:4px 12px;font-size:12px" onclick="scanWifi()">Scan</button></div>
-<div id="wifiStatus" style="margin-bottom:8px"></div>
-<div id="wifiNetworks"></div>
-<div id="wifiSaved" style="margin-top:8px"></div>
-</div>
+
 <div class="card full">
-<div class="card-title">TLS Certificates <span id="certbot-ver" style="font-size:11px;color:#666"></span></div>
-<div id="certList"></div>
-<div class="key-row" style="margin-top:8px;flex-wrap:wrap">
-<input type="text" id="certDomain" placeholder="Domain or *.example.com" style="min-width:180px">
-<input type="text" id="certEmail" placeholder="Email (optional)" style="min-width:140px">
-<select id="certMethod" onchange="toggleCredField()" style="padding:8px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff">
-<option value="standalone">Standalone (HTTP)</option>
-<option value="webroot">Webroot (HTTP)</option>
-<option value="dns-cloudflare">DNS - Cloudflare</option>
-<option value="dns-route53">DNS - Route53 (AWS)</option>
-<option value="dns-google">DNS - Google Cloud</option>
-<option value="dns-digitalocean">DNS - DigitalOcean</option>
-<option value="dns-porkbun">DNS - Porkbun</option>
-<option value="dns-manual">DNS - Manual TXT</option>
-</select>
-<input type="text" id="certCreds" placeholder="Credentials file path" style="min-width:180px;display:none">
-<button class="btn btn-start" onclick="issueCert()">Issue</button>
-<button class="btn btn-load" onclick="renewCerts()">Renew All</button>
-<button class="btn btn-save" id="btnAutoRenew" onclick="toggleAutoRenew()">Auto-Renew: ?</button>
-</div>
-</div>
 <div class="card full"><div class="card-title">Providers <button class="btn btn-start" style="padding:4px 12px;font-size:12px" onclick="showAddProvider()">+ Add</button></div><div id="list"></div></div>
 <div class="card full">
 <div class="card-title">Request History <button class="btn btn-load" style="padding:4px 8px;font-size:11px" onclick="loadHistory()">Refresh</button></div>
@@ -158,12 +120,6 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 </div>
 </div>
 <div class="card">
-<div class="card-title">Backup</div>
-<div style="display:flex;gap:8px;flex-wrap:wrap">
-<a href="/api/backup/export" class="btn btn-load" style="text-decoration:none">Export Backup</a>
-<label class="btn btn-key" style="cursor:pointer">Import Backup<input type="file" id="backupFile" style="display:none" onchange="importBackup()"></label>
-</div>
-</div>
 <div class="card">
 <div class="card-title">API Keys <button class="btn btn-save" style="padding:4px 8px;font-size:11px" onclick="saveKeys()">Save</button></div>
 <div id="keysPanel" style="display:flex;flex-direction:column;gap:8px">
@@ -184,22 +140,6 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 <div class="log-box" id="logBox"></div>
 </div>
 <div class="card full">
-<div class="card-title">Files</div>
-<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">
-<select id="fileRoot" onchange="fileBrowse(this.value)" style="padding:6px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-size:12px">
-<option value="/opt/gateway/data">Gateway Data</option>
-<option value="/etc/letsencrypt">Certs</option>
-<option value="/etc">System Config</option>
-<option value="/home">Home</option>
-<option value="/tmp">Temp</option>
-</select>
-<span id="filePath" style="font-family:monospace;font-size:11px;color:#888;flex:1"></span>
-<button class="btn btn-shutdown" style="padding:4px 10px;font-size:11px" onclick="fileBack()">Back</button>
-<button class="btn btn-load" style="padding:4px 10px;font-size:11px" onclick="fileBrowse(fileCurrentPath)">Refresh</button>
-<button class="btn btn-start" style="padding:4px 10px;font-size:11px" onclick="fileNew()">New File</button>
-<button class="btn btn-save" style="padding:4px 10px;font-size:11px" onclick="fileMkdir()">New Dir</button>
-<label class="btn btn-key" style="padding:4px 10px;font-size:11px;cursor:pointer">Upload<input type="file" id="fileUpload" style="display:none" multiple onchange="fileDoUpload()"></label>
-</div>
 <div id="fileList" style="max-height:300px;overflow-y:auto"></div>
 <div id="fileEditor" style="display:none;margin-top:8px">
 <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
@@ -242,12 +182,12 @@ drag=null;
 })();
 var providers=[],models={},lastLogId=-1;
 function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/"/g,'&amp;quot;')}
-function loadWifi(){fetch('/api/wifi').then(function(r){return r.json()}).then(function(d){
+).then(function(d){
 var h='';(d.active||[]).forEach(function(a){h+='<div class="info-row"><div class="info-item"><span class="label">Connected:</span><span class="value" style="color:#4caf50">'+a.name+'</span></div><div class="info-item"><span class="label">Device:</span><span class="value">'+a.device+'</span></div><button class="btn btn-stop" style="padding:3px 8px;font-size:11px" onclick="wifiDisconnect(\''+a.device+'\')">Disconnect</button></div>'});
 if(!h)h='<div style="color:#888;font-size:12px">Not connected</div>';
 document.getElementById('wifiStatus').innerHTML=h;
 loadWifiSaved()}).catch(function(){})}
-function scanWifi(){document.getElementById('wifiNetworks').innerHTML='<div style="color:#888;font-size:12px">Scanning...</div>';fetch('/api/wifi/scan').then(function(r){return r.json()}).then(function(d){
+).then(function(d){
 var h='';(d.networks||[]).forEach(function(n){
 var bars=n.signal>75?'||||':n.signal>50?'||| ':n.signal>25?'||  ':'|   ';
 h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #2a2a2a">';
@@ -266,8 +206,7 @@ var h='';if(d.saved&&d.saved.length>0){h='<div style="font-size:11px;color:#888;
 document.getElementById('wifiSaved').innerHTML=h}).catch(function(){})}
 var fileCurrentPath='/opt/gateway/data';var fileParentPath='/opt/gateway';
 function fileBack(){if(fileParentPath)fileBrowse(fileParentPath)}
-function fileBrowse(p){fileCurrentPath=p;document.getElementById('filePath').textContent=p;
-fetch('/api/files/ls?path='+encodeURIComponent(p)).then(function(r){return r.json()}).then(function(d){
+).then(function(d){
 fileParentPath=d.parent||'';
 var h='';
 if(d.parent&&d.path!==d.parent){h+='<div style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #222" onclick="fileBrowse(\''+d.parent.replace(/'/g,"\\'")+'\')">..</div>'}
@@ -289,10 +228,9 @@ document.getElementById('fileList').style.display='none';
 document.getElementById('fileEditor').style.display='';
 document.getElementById('fileEditorPath').textContent=d.path;
 document.getElementById('fileContent').value=d.content}).catch(function(e){alert('Cannot open: '+e.message);fileBrowse(fileCurrentPath)})}
-function fileSave(){var p=document.getElementById('fileEditorPath').textContent;var c=document.getElementById('fileContent').value;
-fetch('/api/files/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p,content:c})}).then(function(r){return r.json()}).then(function(d){if(d.status==='ok')alert('Saved');else alert(d.error?.message||'Error');fileBrowse(fileCurrentPath)})}
+,body:JSON.stringify({path:p,content:c})}).then(function(r){return r.json()}).then(function(d){if(d.status==='ok')alert('Saved');else alert(d.error?.message||'Error');fileBrowse(fileCurrentPath)})}
 function fileCloseEditor(){document.getElementById('fileEditor').style.display='none';document.getElementById('fileList').style.display='';fileBrowse(fileCurrentPath)}
-function fileDelete(p,name){if(!confirm('Delete '+name+'?'))return;fetch('/api/files/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p})}).then(function(){fileBrowse(fileCurrentPath)})}
+,body:JSON.stringify({path:p})}).then(function(){fileBrowse(fileCurrentPath)})}
 function fileNew(){var name=prompt('File name:');if(!name)return;var p=fileCurrentPath+'/'+name;
 fetch('/api/files/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p,content:''})}).then(function(){fileBrowse(fileCurrentPath);fileOpen(p)})}
 function fileMkdir(){var name=prompt('Directory name:');if(!name)return;
@@ -377,12 +315,12 @@ document.getElementById('auditList').innerHTML=h}).catch(function(){})}
 function saveWebhook(){var u=document.getElementById('webhookUrl').value;fetch('/api/webhooks',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:u})}).then(function(){alert('Webhook saved')})}
 function testWebhook(){fetch('/api/webhooks',{method:'POST'}).then(function(r){return r.json()}).then(function(d){alert(d.message||'Sent')})}
 function loadWebhook(){fetch('/api/webhooks').then(function(r){return r.json()}).then(function(d){document.getElementById('webhookUrl').value=d.url||''}).catch(function(){})}
-function importBackup(){var f=document.getElementById('backupFile').files[0];if(!f)return;if(!confirm('Restore backup? This will overwrite current config.'))return;fetch('/api/backup/import',{method:'POST',body:f}).then(function(r){return r.json()}).then(function(d){alert(d.status==='ok'?'Backup restored':'Restore failed');location.reload()})}
+).then(function(r){return r.json()}).then(function(d){alert(d.status==='ok'?'Backup restored':'Restore failed');location.reload()})}
 function loadKeys(){fetch("/api/keys").then(function(r){return r.json()}).then(function(d){var el=document.getElementById("keysList");el.innerHTML="";var keys=d.keys||{};Object.keys(keys).sort().forEach(function(k){el.innerHTML+='<div style="color:#aaa;font-size:12px">'+k+'</div><input type="text" data-key="'+k+'" value="'+keys[k]+'" style="padding:4px 6px;background:#2d2d2d;border:1px solid #444;border-radius:4px;color:#fff;font-size:11px;font-family:monospace"><button class="btn btn-stop" style="padding:2px 8px;font-size:11px" onclick="deleteKey(\''+k+'\')">×</button>'})})}
 function saveKeys(){var inputs=document.querySelectorAll("#keysList input[data-key]");var data={};inputs.forEach(function(i){var v=i.value.trim();if(v&&!v.includes("..."))data[i.dataset.key]=v});fetch("/api/keys",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(data)}).then(function(){loadKeys()})}
 function addKey(){var n=document.getElementById("newKeyName").value.trim();var v=document.getElementById("newKeyValue").value.trim();if(!n||!v)return;var d={};d[n]=v;fetch("/api/keys",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(d)}).then(function(){document.getElementById("newKeyName").value="";document.getElementById("newKeyValue").value="";loadKeys()})}
 function deleteKey(name){if(!confirm("Delete key: "+name+"?"))return;fetch("/api/keys/"+name,{method:"DELETE"}).then(function(){loadKeys()})}
-function init(){loadProviders();loadProviderList();loadConfig();loadNetwork();loadWifi();loadCerts();loadUsers();loadKeys();loadHistory();loadAudit();loadWebhook();fileBrowse('/opt/gateway/data');refreshHealth();refreshStats();setInterval(refreshHealth,3000);setInterval(refreshStats,5000);setInterval(pollLogs,2000);pollLogs()}
+function init(){loadProviders();loadProviderList();loadConfig();loadUsers();loadKeys();loadHistory();loadAudit();loadWebhook();refreshHealth();refreshStats();setInterval(refreshHealth,3000);setInterval(refreshStats,5000);setInterval(pollLogs,2000);pollLogs()}
 function refreshHealth(){fetch('/health').then(function(r){return r.json()}).then(function(d){document.getElementById('status').textContent=d.blocked?'Blocked':'Running';document.getElementById('status').style.color=d.blocked?'#f44336':'#4caf50';document.getElementById('count').textContent=d.providers})}
 function refreshStats(){fetch('/api/stats').then(function(r){return r.json()}).then(function(d){
 document.getElementById('st-uptime').textContent=d.uptime||'-';
@@ -395,16 +333,16 @@ document.getElementById('st-disk').textContent=d.diskFreeGB+'/'+d.diskTotalGB+' 
 document.getElementById('st-jvm').textContent=d.jvmHeapMB+'/'+d.jvmMaxMB+' MB';
 document.getElementById('st-cache').textContent=(d.cacheEnabled?'ON':'OFF')+' '+d.cacheSize+' entries, '+d.cacheHits+' hits / '+d.cacheMisses+' misses'
 }).catch(function(){})}
-function loadNetwork(){fetch('/api/network').then(function(r){return r.json()}).then(function(d){
+).then(function(d){
 var h='<div class="info-row"><div class="info-item"><span class="label">Hostname:</span><span class="value">'+d.hostname+'</span></div>';
 h+='<div class="info-item"><span class="label">Gateway:</span><span class="value">'+d.gateway+'</span></div>';
 h+='<div class="info-item"><span class="label">DNS:</span><span class="value">'+(d.dns||[]).join(', ')+'</span></div></div>';
 (d.interfaces||[]).forEach(function(i){h+='<div class="info-row"><div class="info-item"><span class="label">'+i.name+':</span><span class="value">'+(i.addresses||[]).join(', ')+'</span></div><div class="info-item"><span class="label">MAC:</span><span class="value">'+i.mac+'</span></div></div>'});
 document.getElementById('netInfo').innerHTML=h}).catch(function(){})}
-function setHostname(){var n=document.getElementById('newHostname').value;if(!n)return;fetch('/api/network/hostname',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({hostname:n})}).then(function(r){return r.json()}).then(function(d){alert(d.message);loadNetwork()})}
-function setDns(){var s=document.getElementById('newDns').value;if(!s)return;var servers=s.split(',').map(function(x){return x.trim()}).filter(function(x){return x});fetch('/api/network/dns',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({servers:servers})}).then(function(r){return r.json()}).then(function(){alert('DNS updated');loadNetwork()})}
+,body:JSON.stringify({hostname:n})}).then(function(r){return r.json()}).then(function(d){alert(d.message);loadNetwork()})}
+).filter(function(x){return x});fetch('/api/network/dns',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({servers:servers})}).then(function(r){return r.json()}).then(function(){alert('DNS updated');loadNetwork()})}
 var autoRenewOn=false;
-function loadCerts(){fetch('/api/certs').then(function(r){return r.json()}).then(function(d){
+).then(function(d){
 var h='';(d.certs||[]).forEach(function(c){
 var color=c.status==='valid'?'#4caf50':c.status==='expiring'?'#ff9800':'#f44336';
 h+='<div style="background:#1a1a1a;border-radius:6px;padding:8px 12px;margin-bottom:6px;border-left:3px solid '+color+'">';
@@ -428,12 +366,12 @@ autoRenewOn=d.autoRenewEnabled;
 document.getElementById('btnAutoRenew').textContent='Auto-Renew: '+(autoRenewOn?'ON':'OFF');
 document.getElementById('btnAutoRenew').className='btn '+(autoRenewOn?'btn-start':'btn-stop')
 }).catch(function(){})}
-function toggleCredField(){var m=document.getElementById('certMethod').value;var needsCreds=m==='dns-cloudflare'||m==='dns-google'||m==='dns-digitalocean'||m==='dns-porkbun';document.getElementById('certCreds').style.display=needsCreds?'':'none'}
-function issueCert(){var d=document.getElementById('certDomain').value;if(!d){alert('Enter a domain');return}var e=document.getElementById('certEmail').value;var m=document.getElementById('certMethod').value;var c=document.getElementById('certCreds').value;var body={domain:d,method:m};if(e)body.email=e;if(c)body.credentials=c;fetch('/api/certs/issue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-function renewCerts(){fetch('/api/certs/renew',{method:'POST'}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-function revokeCert(domain){if(!confirm('Revoke cert for '+domain+'?'))return;fetch('/api/certs/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-function deleteCert(domain){if(!confirm('Delete cert for '+domain+'? This cannot be undone.'))return;fetch('/api/certs/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-function toggleAutoRenew(){fetch('/api/certs/autorenew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable:!autoRenewOn})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+
+var e=document.getElementById('certEmail').value;var m=document.getElementById('certMethod').value;var c=document.getElementById('certCreds').value;var body={domain:d,method:m};if(e)body.email=e;if(c)body.credentials=c;fetch('/api/certs/issue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+,body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+,body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
+,body:JSON.stringify({enable:!autoRenewOn})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
 function loadConfig(){fetch('/api/config').then(function(r){return r.json()}).then(function(d){document.getElementById('gwKey').value=d.apiKey||''})}
 function saveKey(){var k=document.getElementById('gwKey').value;fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})}).then(function(){alert('API key updated')})}
 function adminAction(a){fetch('/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})}).then(function(){refreshHealth()})}
