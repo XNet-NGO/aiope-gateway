@@ -1,7 +1,0 @@
-FROM azul/zulu-openjdk-alpine:17-jre
-RUN apk add --no-cache bash util-linux ttyd
-COPY build/libs/gateway-server-all.jar /opt/gateway/gateway.jar
-COPY deploy/entrypoint.sh /opt/gateway/entrypoint.sh
-RUN chmod +x /opt/gateway/entrypoint.sh
-EXPOSE 8082
-ENTRYPOINT ["/opt/gateway/entrypoint.sh"]
