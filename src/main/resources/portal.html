@@ -140,14 +140,9 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 <div class="log-box" id="logBox"></div>
 </div>
 <div class="card full">
-<div id="fileList" style="max-height:300px;overflow-y:auto"></div>
-<div id="fileEditor" style="display:none;margin-top:8px">
 <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-<span id="fileEditorPath" style="font-family:monospace;font-size:11px;color:#888;flex:1"></span>
-<button class="btn btn-save" style="padding:4px 10px;font-size:11px" onclick="fileSave()">Save</button>
 <button class="btn btn-stop" style="padding:4px 10px;font-size:11px" onclick="fileCloseEditor()">Close</button>
 </div>
-<textarea id="fileContent" style="width:100%;height:200px;background:#0d0d0d;color:#e0e0e0;border:1px solid #333;border-radius:4px;padding:8px;font-family:monospace;font-size:12px;resize:vertical;box-sizing:border-box"></textarea>
 </div>
 </div>
 <div class="card full">
@@ -181,10 +176,7 @@ drag=null;
 var providers=[],models={},lastLogId=-1;
 function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML.replace(/"/g,'&amp;quot;')}
 ).then(function(d){
-var h='';(d.active||[]).forEach(function(a){h+='<div class="info-row"><div class="info-item"><span class="label">Connected:</span><span class="value" style="color:#4caf50">'+a.name+'</span></div><div class="info-item"><span class="label">Device:</span><span class="value">'+a.device+'</span></div><button class="btn btn-stop" style="padding:3px 8px;font-size:11px" onclick="wifiDisconnect(\''+a.device+'\')">Disconnect</button></div>'});
 if(!h)h='<div style="color:#888;font-size:12px">Not connected</div>';
-document.getElementById('wifiStatus').innerHTML=h;
-loadWifiSaved()}).catch(function(){})}
 ).then(function(d){
 var h='';(d.networks||[]).forEach(function(n){
 var bars=n.signal>75?'||||':n.signal>50?'||| ':n.signal>25?'||  ':'|   ';
@@ -192,50 +184,18 @@ h+='<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bot
 h+='<span style="font-family:monospace;color:#4caf50;font-size:11px">'+bars+'</span>';
 h+='<span style="color:#fff;flex:1">'+n.ssid+'</span>';
 h+='<span style="color:#888;font-size:11px">'+n.signal+'% '+n.security+'</span>';
-h+='<button class="btn btn-start" style="padding:3px 10px;font-size:11px" onclick="wifiConnect(\''+n.ssid.replace(/'/g,"\\'")+'\',\''+n.security+'\')">Connect</button>';
 h+='</div>'});
 if(!h)h='<div style="color:#888;font-size:12px">No networks found</div>';
-document.getElementById('wifiNetworks').innerHTML=h}).catch(function(e){document.getElementById('wifiNetworks').innerHTML='<div style="color:#f44336;font-size:12px">Scan failed</div>'})}
-function wifiConnect(ssid,security){var pw='';if(security&&security!=='--'&&security!==''){pw=prompt('Password for '+ssid+':');if(pw===null)return}fetch('/api/wifi/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ssid:ssid,password:pw})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadWifi()})}
-function wifiDisconnect(dev){fetch('/api/wifi/disconnect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({device:dev})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadWifi()})}
-function wifiForget(name){if(!confirm('Forget network "'+name+'"?'))return;fetch('/api/wifi/forget',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadWifiSaved()})}
-function loadWifiSaved(){fetch('/api/wifi/saved').then(function(r){return r.json()}).then(function(d){
-var h='';if(d.saved&&d.saved.length>0){h='<div style="font-size:11px;color:#888;margin-bottom:4px">Saved networks:</div>';d.saved.forEach(function(s){h+='<span style="display:inline-flex;align-items:center;gap:4px;background:#333;border-radius:12px;padding:2px 10px;margin:2px;font-size:11px;color:#ccc">'+s.name+' <span style="cursor:pointer;color:#f44336" onclick="wifiForget(\''+s.name.replace(/'/g,"\\'")+'\')">x</span></span>'})}
-document.getElementById('wifiSaved').innerHTML=h}).catch(function(){})}
-var fileCurrentPath='/opt/gateway/data';var fileParentPath='/opt/gateway';
-function fileBack(){if(fileParentPath)fileBrowse(fileParentPath)}
 ).then(function(d){
-fileParentPath=d.parent||'';
 var h='';
-if(d.parent&&d.path!==d.parent){h+='<div style="padding:6px 8px;cursor:pointer;border-bottom:1px solid #222" onclick="fileBrowse(\''+d.parent.replace(/'/g,"\\'")+'\')">..</div>'}
 (d.entries||[]).forEach(function(e){
 var sz=e.dir?'':e.size>1024?(e.size/1024|0)+'K':e.size+'B';
 h+='<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-bottom:1px solid #222;font-size:12px">';
-if(e.dir){h+='<span style="color:#7c4dff;cursor:pointer;flex:1" onclick="fileBrowse(\''+e.path.replace(/'/g,"\\'")+'\')">'+e.name+'/</span>'}
 else{h+='<span style="color:#ccc;cursor:pointer;flex:1" onclick="fileOpen(\''+e.path.replace(/'/g,"\\'")+'\')">'+e.name+'</span>'}
 h+='<span style="color:#666;font-size:11px;min-width:50px;text-align:right">'+sz+'</span>';
-h+='<a href="/api/files/download?path='+encodeURIComponent(e.path)+'" style="color:#4caf50;font-size:11px;text-decoration:none">dl</a>';
-h+='<span style="color:#f44336;font-size:11px;cursor:pointer" onclick="fileDelete(\''+e.path.replace(/'/g,"\\'")+'\',\''+e.name.replace(/'/g,"\\'")+'\')">x</span>';
 h+='</div>'});
 if(!d.entries||d.entries.length===0)h+='<div style="color:#666;font-size:12px;padding:8px">Empty</div>';
-document.getElementById('fileList').innerHTML=h}).catch(function(e){document.getElementById('fileList').innerHTML='<div style="color:#f44336;padding:8px">'+e.message+'</div>'})}
-function fileOpen(p){document.getElementById('fileList').innerHTML='<div style="color:#888;padding:8px">Loading...</div>';
-fetch('/api/files/read?path='+encodeURIComponent(p)).then(function(r){return r.json()}).then(function(d){
-if(d.error){alert(d.error.message||JSON.stringify(d.error));fileBrowse(fileCurrentPath);return}
-document.getElementById('fileList').style.display='none';
-document.getElementById('fileEditor').style.display='';
-document.getElementById('fileEditorPath').textContent=d.path;
-document.getElementById('fileContent').value=d.content}).catch(function(e){alert('Cannot open: '+e.message);fileBrowse(fileCurrentPath)})}
-,body:JSON.stringify({path:p,content:c})}).then(function(r){return r.json()}).then(function(d){if(d.status==='ok')alert('Saved');else alert(d.error?.message||'Error');fileBrowse(fileCurrentPath)})}
-function fileCloseEditor(){document.getElementById('fileEditor').style.display='none';document.getElementById('fileList').style.display='';fileBrowse(fileCurrentPath)}
-,body:JSON.stringify({path:p})}).then(function(){fileBrowse(fileCurrentPath)})}
-function fileNew(){var name=prompt('File name:');if(!name)return;var p=fileCurrentPath+'/'+name;
-fetch('/api/files/write',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:p,content:''})}).then(function(){fileBrowse(fileCurrentPath);fileOpen(p)})}
 function fileMkdir(){var name=prompt('Directory name:');if(!name)return;
-fetch('/api/files/mkdir',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:fileCurrentPath+'/'+name})}).then(function(){fileBrowse(fileCurrentPath)})}
-function fileDoUpload(){var input=document.getElementById('fileUpload');if(!input.files.length)return;var fd=new FormData();for(var i=0;i<input.files.length;i++)fd.append('file'+i,input.files[i]);
-fetch('/api/files/upload?path='+encodeURIComponent(fileCurrentPath),{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(){input.value='';fileBrowse(fileCurrentPath)})}
-function toggleShell(){var f=document.getElementById('shellFrame');if(f.style.display==='none'){f.src='/shell/';f.style.display=''}else{f.style.display='none';f.src=''}}
 function rotateKey(){if(!confirm('Generate new API key? The current key will stop working immediately.'))return;
 var a=new Uint8Array(16);crypto.getRandomValues(a);var k='gw-'+Array.from(a).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
 fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})}).then(function(r){return r.json()}).then(function(){
@@ -336,9 +296,6 @@ var h='<div class="info-row"><div class="info-item"><span class="label">Hostname
 h+='<div class="info-item"><span class="label">Gateway:</span><span class="value">'+d.gateway+'</span></div>';
 h+='<div class="info-item"><span class="label">DNS:</span><span class="value">'+(d.dns||[]).join(', ')+'</span></div></div>';
 (d.interfaces||[]).forEach(function(i){h+='<div class="info-row"><div class="info-item"><span class="label">'+i.name+':</span><span class="value">'+(i.addresses||[]).join(', ')+'</span></div><div class="info-item"><span class="label">MAC:</span><span class="value">'+i.mac+'</span></div></div>'});
-document.getElementById('netInfo').innerHTML=h}).catch(function(){})}
-,body:JSON.stringify({hostname:n})}).then(function(r){return r.json()}).then(function(d){alert(d.message);loadNetwork()})}
-).filter(function(x){return x});fetch('/api/network/dns',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({servers:servers})}).then(function(r){return r.json()}).then(function(){alert('DNS updated');loadNetwork()})}
 var autoRenewOn=false;
 ).then(function(d){
 var h='';(d.certs||[]).forEach(function(c){
@@ -348,8 +305,6 @@ h+='<div style="display:flex;justify-content:space-between;align-items:center;fl
 h+='<span style="color:#fff;font-weight:500">'+c.domain+'</span>';
 h+='<span style="font-size:11px;color:#888">'+(c.daysRemaining?c.daysRemaining+'d remaining':'')+'</span>';
 h+='<div style="display:flex;gap:4px">';
-h+='<button class="btn btn-stop" style="padding:3px 8px;font-size:11px" onclick="revokeCert(\''+c.domain+'\')">Revoke</button>';
-h+='<button class="btn btn-shutdown" style="padding:3px 8px;font-size:11px" onclick="deleteCert(\''+c.domain+'\')">Delete</button>';
 h+='</div></div>';
 h+='<div style="font-size:11px;color:#888;margin-top:4px">';
 if(c.notAfter)h+='Expires: '+c.notAfter+'<br>';
@@ -357,19 +312,9 @@ if(c.issuer)h+='Issuer: '+c.issuer+'<br>';
 if(c.fingerprint)h+='Fingerprint: '+c.fingerprint;
 h+='</div></div>'});
 if(!h)h='<div style="color:#888;font-size:12px">No certificates found</div>';
-document.getElementById('certList').innerHTML=h}).catch(function(){});
-fetch('/api/certs/status').then(function(r){return r.json()}).then(function(d){
-document.getElementById('certbot-ver').textContent=d.certbotInstalled?d.certbotVersion:'certbot not installed';
 autoRenewOn=d.autoRenewEnabled;
-document.getElementById('btnAutoRenew').textContent='Auto-Renew: '+(autoRenewOn?'ON':'OFF');
-document.getElementById('btnAutoRenew').className='btn '+(autoRenewOn?'btn-start':'btn-stop')
 }).catch(function(){})}
 
-var e=document.getElementById('certEmail').value;var m=document.getElementById('certMethod').value;var c=document.getElementById('certCreds').value;var body={domain:d,method:m};if(e)body.email=e;if(c)body.credentials=c;fetch('/api/certs/issue',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-,body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-,body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-,body:JSON.stringify({enable:!autoRenewOn})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
 function loadConfig(){fetch('/api/config').then(function(r){return r.json()}).then(function(d){document.getElementById('gwKey').value=d.apiKey||''})}
 function saveKey(){var k=document.getElementById('gwKey').value;fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})}).then(function(){alert('API key updated')})}
 function adminAction(a){fetch('/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})}).then(function(){refreshHealth()})}
