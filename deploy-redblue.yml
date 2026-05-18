@@ -1,9 +1,9 @@
 ---
-- name: XNet Gateway - Red/Blue Deploy
+- name: XNet Gateway - Red/Blue Container Deploy
   hosts: all
   become: yes
   vars:
-    gateway_jar: /opt/gateway/gateway-server-all.jar
+    image_name: aiope-gateway
     data_dir: /opt/gateway/data
     blue_port: 8082
     red_port: 8083
@@ -16,41 +16,46 @@
       debug:
         msg: "Deploying {{ deploy_color }} on port {{ deploy_port }} (active: {{ active_color }})"
 
-    - name: Ensure directories
+    - name: Ensure data dir
       file:
-        path: "{{ item }}"
+        path: "{{ data_dir }}"
         state: directory
         owner: ubuntu
-      loop: [/opt/gateway, "{{ data_dir }}"]
 
-    - name: Copy gateway jar
-      copy:
-        src: build/libs/gateway-server-all.jar
-        dest: "{{ gateway_jar }}"
-        owner: ubuntu
+    - name: Copy build context
+      synchronize:
+        src: ./
+        dest: /opt/gateway/build-context/
+        rsync_opts:
+          - "--include=Dockerfile"
+          - "--include=build/***"
+          - "--exclude=*"
 
-    - name: Systemd unit
-      copy:
-        dest: "/etc/systemd/system/gateway-{{ deploy_color }}.service"
-        content: |
-          [Unit]
-          Description=AIOPE Gateway ({{ deploy_color }})
-          After=network.target
-          [Service]
-          Type=simple
-          User=ubuntu
-          ExecStart=/usr/bin/java -Xmx256m -jar {{ gateway_jar }} {{ deploy_port }} {{ data_dir }}
-          Restart=on-failure
-          RestartSec=5
-          [Install]
-          WantedBy=multi-user.target
+    - name: Build image
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        tag: "{{ deploy_color }}"
+        source: build
+        build:
+          path: /opt/gateway/build-context
+        force_source: yes
 
-    - name: Reload and start
-      systemd:
-        daemon_reload: yes
+    - name: Stop old deploy container if exists
+      community.docker.docker_container:
         name: "gateway-{{ deploy_color }}"
-        state: restarted
-        enabled: yes
+        state: absent
+      ignore_errors: yes
+
+    - name: Start {{ deploy_color }} container
+      community.docker.docker_container:
+        name: "gateway-{{ deploy_color }}"
+        image: "{{ image_name }}:{{ deploy_color }}"
+        command: ["{{ deploy_port }}", "/opt/gateway/data"]
+        network_mode: host
+        volumes:
+          - "{{ data_dir }}:/opt/gateway/data"
+        restart_policy: unless-stopped
+        state: started
 
     - name: Health check
       uri:
@@ -65,21 +70,19 @@
       shell: |
         sed -i 's/reverse_proxy 127.0.0.1:808[0-9]/reverse_proxy 127.0.0.1:{{ deploy_port }}/' /tmp/caddy-etc/Caddyfile
         docker restart caddy
-      args:
-        warn: false
 
     - name: Record active color
       copy:
         dest: /opt/gateway/active-color
         content: "{{ deploy_color }}"
 
-    - name: Stop old {{ active_color }}
-      systemd:
+    - name: Stop old {{ active_color }} container
+      community.docker.docker_container:
         name: "gateway-{{ active_color }}"
         state: stopped
       ignore_errors: yes
 
-    - name: Verify external
+    - name: Verify
       uri:
         url: "https://inf.xnet.ngo/health"
         status_code: 200
@@ -87,4 +90,4 @@
 
     - name: Done
       debug:
-        msg: "✅ {{ deploy_color }} live. {{ final.json }}"
+        msg: "✅ {{ deploy_color }} live on port {{ deploy_port }}. {{ final.json }}"
