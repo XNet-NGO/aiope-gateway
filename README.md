@@ -1,6 +1,8 @@
 
 <p align="center"><img src="logo.png" width="200" alt="AIOPE"></p>
 
+<p align="center"><img src="screenshots/hero.png" alt="XNet" width="800"></p>
+
 # AIOPE Gateway
 
 [![Built with Pollinations.ai](https://img.shields.io/badge/Built_with-Pollinations.ai-blue)](https://pollinations.ai)
