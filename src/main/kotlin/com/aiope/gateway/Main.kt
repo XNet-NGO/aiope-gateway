@@ -33,7 +33,7 @@ object ServerLog {
 }
 
 class GatewayServer(private val port: Int, private val dataDir: File) {
-    private val gateway = LiteLLMGateway(File(dataDir, "config.json")) { msg ->
+    private val gateway = XNetLLM(File(dataDir, "config.json")) { msg ->
         println("[Gateway] $msg"); ServerLog.add(msg)
     }
     val sessions = ConcurrentHashMap<String, SessionInfo>()

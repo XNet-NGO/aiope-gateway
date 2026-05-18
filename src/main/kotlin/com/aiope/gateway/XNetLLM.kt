@@ -45,7 +45,7 @@ data class APIError(
     }
 }
 
-class LiteLLMGateway(
+class XNetLLM(
     private val configFile: File,
     private val onLog: (String) -> Unit = {}
 ) {
@@ -337,8 +337,8 @@ class LiteLLMGateway(
             // Cache lookup
             val key = if (cacheEnabled) cacheKey(provider.model, requestJson.get("messages"), (requestJson.get("prompt")?.asString ?: "") + (requestJson.get("temperature")?.toString() ?: "") + (requestJson.get("seed")?.toString() ?: "")) else null
             if (key != null) {
-                cache.getIfPresent(key)?.let { synchronized(this@LiteLLMGateway) { cacheHits++ }; log("Cache hit"); return@withContext it }
-                synchronized(this@LiteLLMGateway) { cacheMisses++ }
+                cache.getIfPresent(key)?.let { synchronized(this@XNetLLM) { cacheHits++ }; log("Cache hit"); return@withContext it }
+                synchronized(this@XNetLLM) { cacheMisses++ }
             }
 
             val payload = gson.toJson(requestJson)
