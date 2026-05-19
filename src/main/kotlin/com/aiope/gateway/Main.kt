@@ -3,6 +3,7 @@ package com.aiope.gateway
 import kotlinx.coroutines.*
 import org.eclipse.jetty.server.*
 import org.eclipse.jetty.servlet.*
+import org.eclipse.jetty.websocket.server.NativeWebSocketServletContainerInitializer
 import java.io.File
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
@@ -129,7 +130,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
         handler.addServlet(WebhookServlet::class.java, "/api/webhooks/*")
 
         handler.addServlet(KeysServlet::class.java, "/api/keys/*")
-        handler.addServlet(RealtimeServlet::class.java, "/ws/voice")
+        handler.addServlet(RealtimeServlet::class.java, "/ws/voice/*")
         handler.setAttribute("gateway", this)
 
         // Main connector (default port)
