@@ -7,10 +7,11 @@
 
 [![Built with Pollinations.ai](https://img.shields.io/badge/Built_with-Pollinations.ai-blue)](https://pollinations.ai)
 
-OpenAI-compatible LLM proxy with a full web admin portal. Routes requests to multiple upstream providers through a single endpoint. Designed to run as a lightweight appliance on a Raspberry Pi, cloud instance, or any JVM host.
+**v2.0** — OpenAI-compatible LLM proxy with realtime voice and a full web admin portal. Routes requests to multiple upstream providers through a single endpoint. Designed to run as a lightweight appliance on a Raspberry Pi, cloud instance, or any JVM host.
 
 ## Features
 
+- **Realtime voice proxy** — WebSocket bridge to Google Gemini Live API (BidiGenerateContent) with full tool support
 - **Multi-provider routing** — 9+ pre-configured providers, add unlimited custom ones
 - **Full OpenAI API compatibility** — chat, completions, embeddings, rerank, audio (TTS/STT), images, moderations, responses API
 - **Web admin portal** — manage everything from the browser, no CLI needed
@@ -93,6 +94,7 @@ Default API key: `aiope-gateway-key` — change immediately after first login.
 
 | Method | Path | Description |
 |--------|------|-------------|
+| WS | `/ws/voice` | Realtime voice WebSocket (bidirectional audio + tools) |
 | GET | `/v1/models` | List enabled models |
 | POST | `/v1/chat/completions` | Chat completion (streaming + non-streaming) |
 | POST | `/v1/completions` | Legacy completions |
@@ -340,6 +342,38 @@ Settings > Providers > Add custom provider:
 # Output: build/libs/gateway-server-all.jar (~8MB)
 ```
 
+## Realtime Voice
+
+The gateway provides a WebSocket proxy at `/ws/voice` that bridges clients to Google's Gemini Live API (BidiGenerateContent).
+
+### Connection
+
+```
+wss://gateway/ws/voice?model=google-ai-studio/gemini-3.1-flash-live-preview&system=URL_ENCODED_PROMPT
+Authorization: Bearer YOUR_KEY
+```
+
+### Protocol
+
+Client sends:
+- `{"audio":{"pcm":"base64","sampleRate":16000}}` — mic audio
+- `{"text":{"content":"hello"}}` — text input
+- `{"turnEnd":true}` — end of user turn
+- `{"toolResponse":{"functionResponses":[...]}}` — tool results
+
+Gateway sends:
+- `{"connected":true}` — session ready
+- `{"audio":{"pcm":"base64"}}` — model audio (24kHz PCM)
+- `{"text":{"delta":"..."}}` — text output
+- `{"outputTranscription":"..."}` — model speech transcription
+- `{"inputTranscription":"..."}` — user speech transcription
+- `{"toolCall":{"functionCalls":[...]}}` — tool invocations
+- `{"turnComplete":true}` — model finished speaking
+
+### Tools
+
+46 function declarations are sent in the session setup. Tool calls are forwarded to the client for native on-device execution (filesystem, shell, browser, SMS, calendar, SSH, etc).
+
 ## Architecture
 
 ```
@@ -374,6 +408,7 @@ ttyd (port 7681) → Web shell
 |-----------|---------|
 | Kotlin | 1.9.22 |
 | Jetty | 9.4.54 |
+| Jetty WebSocket | 9.4.54 |
 | OkHttp | 4.12.0 |
 | Caffeine | 3.1.8 |
 | Gson | 2.10.1 |

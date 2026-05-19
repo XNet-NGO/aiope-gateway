@@ -39,7 +39,7 @@ tasks.named('shadowJar') {
         attributes(
             'Main-Class': 'com.aiope.gateway.MainKt',
             'Implementation-Title': 'AIOPE Gateway Server',
-            'Implementation-Version': '1.0'
+            'Implementation-Version': '2.0'
         )
     }
 }
