@@ -43,7 +43,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
     data class SessionInfo(val token: String, val user: String = "admin", val createdAt: Long = System.currentTimeMillis())
 
     // Request history
-    data class RequestRecord(val id: Long, val ts: Long, val model: String, val endpoint: String, val status: Int, val latencyMs: Long, val user: String)
+    data class RequestRecord(val id: Long, val ts: Long, val model: String, val endpoint: String, val status: Int, val latencyMs: Long, val user: String, val ip: String = "")
     private val requestHistory = CopyOnWriteArrayList<RequestRecord>()
     private var nextReqId = 0L
     fun addRequest(r: RequestRecord) { synchronized(requestHistory) { requestHistory.add(r); if (requestHistory.size > 500) requestHistory.removeAt(0) } }
@@ -385,6 +385,7 @@ class ApiServlet : HttpServlet() {
         val start = System.currentTimeMillis()
         ctx.requestCount++
         var status = 200
+        var requestModel = ""
         try { when {
             path == "/models" && req.method == "GET" -> handleModels(ctx, req, resp)
             path == "/chat/completions" && req.method == "POST" -> handleProxy(ctx, req, resp, path)
@@ -402,7 +403,7 @@ class ApiServlet : HttpServlet() {
             path.startsWith("/responses/") && req.method == "GET" -> handlePassthrough(ctx, req, resp, path)
             else -> { resp.status = 404; resp.contentType = "application/json"; resp.writer.write(errResp("Not found", 404)) }
         } } catch (e: Exception) { ctx.errorCount++; status = 500; ServerLog.add("Error: ${e.message}"); resp.status = 500; resp.contentType = "application/json"; val errJson = JsonObject().apply { add("error", JsonObject().apply { addProperty("message", e.message ?: "Internal error") }) }; resp.writer.write(errJson.toString()) }
-        finally { ctx.addRequest(GatewayServer.RequestRecord(ctx.requestCount, System.currentTimeMillis(), "", path, status, System.currentTimeMillis() - start, user)) }
+        finally { requestModel = req.getAttribute("requestModel") as? String ?: ""; val ip = req.getHeader("X-Forwarded-For")?.split(",")?.firstOrNull()?.trim() ?: req.remoteAddr; ctx.addRequest(GatewayServer.RequestRecord(ctx.requestCount, System.currentTimeMillis(), requestModel, path, status, System.currentTimeMillis() - start, user, ip)) }
     }
     private fun handleModels(ctx: GatewayServer, req: HttpServletRequest, resp: HttpServletResponse) {
         val ts = System.currentTimeMillis() / 1000; val a = JsonArray()
@@ -439,7 +440,9 @@ class ApiServlet : HttpServlet() {
     private fun handleProxy(ctx: GatewayServer, req: HttpServletRequest, resp: HttpServletResponse, endpoint: String) {
         val body = req.reader.readText(); val rj = JsonParser.parseString(body).asJsonObject
         val model = rj.get("model")?.asString ?: ""
+        if (model.isBlank()) { resp.status = 400; resp.writer.write("""{"error":{"message":"model field is required"}}"""); return }
         val stream = rj.get("stream")?.asBoolean ?: false
+        req.setAttribute("requestModel", model)
         ServerLog.add("${endpoint}: model=$model stream=$stream")
         val provider = ctx.getGateway().resolveProvider(model)
         ctx.checkUserProviderAccess(req, provider.name)
@@ -459,6 +462,8 @@ class ApiServlet : HttpServlet() {
     private fun handleProxyBinary(ctx: GatewayServer, req: HttpServletRequest, resp: HttpServletResponse, endpoint: String) {
         val body = req.reader.readText(); val rj = JsonParser.parseString(body).asJsonObject
         val model = rj.get("model")?.asString ?: ""
+        if (model.isBlank()) { resp.status = 400; resp.writer.write("""{"error":{"message":"model field is required"}}"""); return }
+        req.setAttribute("requestModel", model)
         ServerLog.add("${endpoint}: model=$model")
         val provider = ctx.getGateway().resolveProvider(model)
         ctx.checkUserProviderAccess(req, provider.name)

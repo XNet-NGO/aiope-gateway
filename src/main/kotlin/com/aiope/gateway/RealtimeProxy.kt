@@ -50,23 +50,32 @@ class RealtimeSocket(
     private val ctx: GatewayServer,
     private val model: String,
     private val userKey: String,
-    private val systemPrompt: String = ""
+    private var systemPrompt: String = ""
 ) : WebSocketAdapter() {
 
     private var upstream: WebSocket? = null
+    private var upstreamReady = false
     private val http = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // no timeout for WS
         .build()
 
     override fun onWebSocketConnect(sess: Session) {
         super.onWebSocketConnect(sess)
-        System.err.println("[WS] onWebSocketConnect model=$model")
+        System.err.println("[WS] onWebSocketConnect model=$model systemPrompt=${systemPrompt.length} chars")
 
+        // If system prompt was provided in URL, connect immediately
+        if (systemPrompt.isNotBlank()) {
+            connectUpstream()
+        }
+        // Otherwise wait for first message with {"setup":{"systemPrompt":"..."}}
+    }
+
+    private fun connectUpstream() {
         // Resolve upstream URL based on model/provider
         val upstreamUrl = resolveUpstreamUrl(model)
         if (upstreamUrl == null) {
-            sess.remote.sendString("""{"error":"No realtime provider for model: $model"}""")
-            sess.close(1008, "No provider")
+            remote.sendString("""{"error":"No realtime provider for model: $model"}""")
+            session?.close(1008, "No provider")
             return
         }
         System.err.println("[WS] Connecting upstream: ${upstreamUrl.take(100)}")
@@ -76,6 +85,7 @@ class RealtimeSocket(
         upstream = http.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 System.err.println("[WS] Upstream onOpen, sending setup")
+                upstreamReady = true
                 // Send setup message for Google Live API
                 if (upstreamUrl.contains("generativelanguage.googleapis.com")) {
                     val modelName = model.substringAfter("/").let {
@@ -161,6 +171,19 @@ class RealtimeSocket(
     }
 
     override fun onWebSocketText(message: String) {
+        // Handle setup message (system prompt sent after connection)
+        if (!upstreamReady) {
+            try {
+                val json = JsonParser.parseString(message).asJsonObject
+                json.getAsJsonObject("setup")?.let { setup ->
+                    setup.get("systemPrompt")?.asString?.let { systemPrompt = it }
+                    connectUpstream()
+                    return
+                }
+            } catch (_: Exception) {}
+            // If no setup message and upstream not connected, connect with empty prompt
+            if (upstream == null) connectUpstream()
+        }
         // Client → upstream, translate format
         try {
             val upstreamMsg = translateToUpstream(message)
