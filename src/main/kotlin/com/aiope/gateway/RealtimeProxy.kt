@@ -55,6 +55,8 @@ class RealtimeSocket(
 
     private var upstream: WebSocket? = null
     private var upstreamReady = false
+    private var clientTools: com.google.gson.JsonArray? = null
+    private var voiceName: String = "Aoede"
     private val http = OkHttpClient.Builder()
         .readTimeout(0, TimeUnit.MILLISECONDS) // no timeout for WS
         .build()
@@ -99,7 +101,7 @@ class RealtimeSocket(
                                 add("speechConfig", JsonObject().apply {
                                     add("voiceConfig", JsonObject().apply {
                                         add("prebuiltVoiceConfig", JsonObject().apply {
-                                            addProperty("voiceName", "Aoede")
+                                            addProperty("voiceName", voiceName)
                                         })
                                     })
                                 })
@@ -113,7 +115,7 @@ class RealtimeSocket(
                             }
                             add("tools", JsonArray().apply {
                                 add(JsonObject().apply {
-                                    add("functionDeclarations", buildToolDeclarations())
+                                    add("functionDeclarations", clientTools ?: buildToolDeclarations())
                                 })
                             })
                         })
@@ -177,6 +179,8 @@ class RealtimeSocket(
                 val json = JsonParser.parseString(message).asJsonObject
                 json.getAsJsonObject("setup")?.let { setup ->
                     setup.get("systemPrompt")?.asString?.let { systemPrompt = it }
+                    setup.getAsJsonArray("tools")?.let { clientTools = it }
+                    setup.get("voiceName")?.asString?.let { voiceName = it }
                     connectUpstream()
                     return
                 }

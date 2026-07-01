@@ -80,11 +80,13 @@ body{font-family:-apple-system,sans-serif;background:#121212;color:#e0e0e0;font-
 <div class="info-item"><span class="label">Providers:</span><span class="value" id="count">-</span></div>
 <div class="info-item"><span class="label">Endpoint:</span><span class="value" style="font-family:monospace">http://{{HOST}}:{{PORT}}/v1</span></div>
 </div>
-<div class="key-row">
-<input type="password" id="gwKey" placeholder="Gateway API Key">
-<button class="btn btn-key" onclick="saveKey()">Set Key</button>
-<button class="btn btn-save" onclick="rotateKey()">Rotate Key</button>
+<div style="font-size:12px;color:#888;margin-top:8px">Portal Authentication</div>
+<div style="display:grid;grid-template-columns:55px 1fr auto;gap:4px 8px;align-items:center;font-size:12px;margin-top:4px">
+<span style="color:#666">User</span><input type="text" id="authUser" style="padding:5px;font-size:12px;margin:0"><button class="btn btn-key" style="padding:3px 8px;font-size:11px" onclick="saveAuthUser()">Save</button>
+<span style="color:#666">Pass</span><input type="password" id="authPw" style="padding:5px;font-size:12px;margin:0" placeholder="New password"><button class="btn btn-start" style="padding:3px 8px;font-size:11px" onclick="saveAuthPw()">Update</button>
+<span style="color:#666">TOTP</span><span id="totpStatus" style="color:#888">-</span><button class="btn btn-key" id="totpBtn" style="padding:3px 8px;font-size:11px" onclick="setupTotp()">Enable</button>
 </div>
+<div id="totpSetup" style="display:none;margin-top:6px;font-size:12px"><span style="color:#888">Secret:</span> <code id="totpSecret" style="color:#7c4dff"></code><br><input type="text" id="totpVerify" style="padding:5px;font-size:12px;margin:4px 0 0;width:80px" placeholder="Code" maxlength="6"><button class="btn btn-start" style="padding:3px 8px;font-size:11px;margin-left:4px" onclick="verifyTotp()">Verify</button></div>
 </div>
 <div class="card">
 <div class="card-title">Users <button class="btn btn-start" style="padding:4px 12px;font-size:12px" onclick="openUserModal()">+ Add</button></div>
@@ -227,15 +229,6 @@ fetch('/api/files/mkdir',{method:'POST',headers:{'Content-Type':'application/jso
 function fileDoUpload(){var input=document.getElementById('fileUpload');if(!input.files.length)return;var fd=new FormData();for(var i=0;i<input.files.length;i++)fd.append('file'+i,input.files[i]);
 fetch('/api/files/upload?path='+encodeURIComponent(fileCurrentPath),{method:'POST',body:fd}).then(function(r){return r.json()}).then(function(){input.value='';fileBrowse(fileCurrentPath)})}
 function toggleShell(){var f=document.getElementById('shellFrame');if(f.style.display==='none'){f.src='/shell/';f.style.display=''}else{f.style.display='none';f.src=''}}
-function rotateKey(){if(!confirm('Generate new API key? The current key will stop working immediately.'))return;
-var a=new Uint8Array(16);crypto.getRandomValues(a);var k='gw-'+Array.from(a).map(function(b){return b.toString(16).padStart(2,'0')}).join('');
-fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})}).then(function(r){return r.json()}).then(function(){
-document.getElementById('gwKey').value='';
-document.getElementById('keyModalValue').textContent=k;
-document.getElementById('keyModal').classList.add('show');
-loadConfig()}).catch(function(e){alert('Rotation failed: '+e.message)})}
-function copyKey(){var v=document.getElementById('keyModalValue').textContent;navigator.clipboard.writeText(v).then(function(){document.getElementById('keyModalValue').style.borderColor='#4caf50'})}
-function closeKeyModal(){document.getElementById('keyModal').classList.remove('show')}
 var _allProviders=[];var _allUsers=[];
 function loadUsers(){fetch('/api/users').then(function(r){return r.json()}).then(function(d){
 _allUsers=d.users||[];var h='';_allUsers.forEach(function(u){
@@ -361,8 +354,7 @@ function renewCerts(){fetch('/api/certs/renew',{method:'POST'}).then(function(r)
 function revokeCert(domain){if(!confirm('Revoke cert for '+domain+'?'))return;fetch('/api/certs/revoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
 function deleteCert(domain){if(!confirm('Delete cert for '+domain+'? This cannot be undone.'))return;fetch('/api/certs/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domain:domain})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
 function toggleAutoRenew(){fetch('/api/certs/autorenew',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enable:!autoRenewOn})}).then(function(r){return r.json()}).then(function(r){alert(r.message);loadCerts()})}
-function loadConfig(){fetch('/api/config').then(function(r){return r.json()}).then(function(d){document.getElementById('gwKey').value=d.apiKey||''})}
-function saveKey(){var k=document.getElementById('gwKey').value;fetch('/api/config',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({apiKey:k})}).then(function(){alert('API key updated')})}
+function loadConfig(){fetch('/api/config').then(function(r){return r.json()}).then(function(d){})}
 function adminAction(a){fetch('/admin',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:a})}).then(function(){refreshHealth()})}
 function loadProviders(){fetch('/api/config/providers').then(function(r){return r.json()}).then(function(d){providers=d;render();providers.forEach(function(p){if(p.name.indexOf('/')>=0)return;if(p.cachedModels&&p.cachedModels.length>0){models[p.name]=p.cachedModels;renderModelScroll(p.name)}})})}
 function render(){
@@ -524,6 +516,14 @@ box.scrollTop=box.scrollHeight})}
 function deleteProvider(name){if(!confirm('Remove provider "'+name+'"?'))return;fetch('/api/config/providers/'+name,{method:'DELETE'}).then(function(r){return r.json()}).then(function(){loadProviders()}).catch(function(e){alert(e.message)})}
 function showAddProvider(){var name=prompt('Provider name:');if(!name||!name.trim())return;name=name.trim();fetch('/api/config/providers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,apiBase:'',model:''})}).then(function(r){return r.json()}).then(function(d){if(d.error)alert(d.error.message);else loadProviders()}).catch(function(e){alert(e.message)})}
 init();
+function loadAuthUser(){try{fetch("/api/config/portal-auth").then(function(r){return r.json()}).then(function(d){var el=document.getElementById("authUser");if(el&&d.username)el.value=d.username}).catch(function(){})}catch(e){}}
+function loadTotpStatus(){try{fetch("/api/config/portal-auth").then(function(r){return r.json()}).then(function(d){var e=d.totpEnabled;var el=document.getElementById("totpStatus");if(el){el.textContent=e?"Enabled":"Off";el.style.color=e?"#4caf50":"#888"}var btn=document.getElementById("totpBtn");if(btn){btn.textContent=e?"Disable":"Enable";btn.onclick=e?disableTotp:setupTotp}}).catch(function(){})}catch(e){}}
+function saveAuthUser(){var u=document.getElementById("authUser").value.trim();if(!u)return;fetch("/api/config/portal-auth",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({username:u})}).then(function(r){return r.json()}).then(function(d){if(d.status==="ok")alert("Username updated")})}
+function saveAuthPw(){var pw=document.getElementById("authPw").value;if(!pw||pw.length<4){alert("Min 4 chars");return}fetch("/api/config/portal-auth",{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({password:pw})}).then(function(r){return r.json()}).then(function(d){if(d.status==="ok"){alert("Password updated");document.getElementById("authPw").value=""}})}
+function setupTotp(){fetch("/api/config/portal-auth/totp-setup",{method:"POST"}).then(function(r){return r.json()}).then(function(d){document.getElementById("totpSecret").textContent=d.secret;document.getElementById("totpSetup").style.display="block"})}
+function verifyTotp(){var c=document.getElementById("totpVerify").value;fetch("/api/config/portal-auth/totp-verify",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({code:c})}).then(function(r){return r.json()}).then(function(d){if(d.status==="ok"){alert("TOTP enabled");document.getElementById("totpSetup").style.display="none";loadTotpStatus()}else alert("Invalid code")})}
+function disableTotp(){if(!confirm("Disable TOTP?"))return;fetch("/api/config/portal-auth/totp-disable",{method:"POST"}).then(function(){loadTotpStatus()})}
+loadAuthUser();loadTotpStatus();
 </script>
 
 <div class="modal-overlay" id="userModal">
@@ -554,18 +554,6 @@ init();
 <div class="modal-actions">
 <button class="btn btn-save" onclick="saveUser()">Save</button>
 <button class="btn btn-load" onclick="closeUserModal()">Cancel</button>
-</div>
-</div>
-</div>
-<div class="modal-overlay" id="keyModal">
-<div class="modal-box">
-<h2>🔑 New Admin API Key</h2>
-<p>Your new key has been set. Copy it now — you won't see it again.</p>
-<div class="key-display" id="keyModalValue"></div>
-<p class="warn">⚠ Store this key securely. The old key is now invalid.</p>
-<div class="modal-actions">
-<button class="btn btn-save" onclick="copyKey()">Copy to Clipboard</button>
-<button class="btn btn-load" onclick="closeKeyModal()">I've Saved It</button>
 </div>
 </div>
 </div>

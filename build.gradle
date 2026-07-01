@@ -23,6 +23,7 @@ dependencies {
     implementation 'org.eclipse.jetty.websocket:websocket-server:9.4.54.v20240208'
     implementation 'org.eclipse.jetty.websocket:websocket-servlet:9.4.54.v20240208'
     implementation 'org.mindrot:jbcrypt:0.4'
+    implementation 'dev.samstevens.totp:totp:1.7.1'
 }
 
 application {
@@ -30,7 +31,7 @@ application {
 }
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 tasks.named('shadowJar') {

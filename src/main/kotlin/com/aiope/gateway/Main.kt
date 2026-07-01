@@ -88,6 +88,50 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
     fun sendWebhook(event: String, message: String) { if (webhookUrl.isBlank()) return; scope.launch(Dispatchers.IO) { try { val body = gson.toJson(mapOf("event" to event, "message" to message, "ts" to System.currentTimeMillis())); okhttp3.OkHttpClient().newCall(okhttp3.Request.Builder().url(webhookUrl).post(body.toByteArray().toRequestBody("application/json".toMediaType())).build()).execute().close() } catch (_: Exception) {} } }
 
 
+    // Portal authentication (separate from API keys)
+    data class PortalCreds(val username: String, val passwordHash: String, val totpSecret: String = "")
+    private var portalCreds: PortalCreds? = null
+    private val portalCredsFile = File(dataDir, "portal_auth.json")
+    fun loadPortalCreds() {
+        try {
+            if (portalCredsFile.exists()) {
+                val o = com.google.gson.JsonParser.parseString(portalCredsFile.readText()).asJsonObject
+                portalCreds = PortalCreds(
+                    o.get("username")?.asString ?: "xnet-admin",
+                    o.get("passwordHash")?.asString ?: "",
+                    o.get("totpSecret")?.asString ?: ""
+                )
+            }
+        } catch (_: Exception) {}
+        // Default creds if none exist
+        if (portalCreds == null || portalCreds!!.passwordHash.isBlank()) {
+            portalCreds = PortalCreds("xnet-admin", org.mindrot.jbcrypt.BCrypt.hashpw("!1nfer!", org.mindrot.jbcrypt.BCrypt.gensalt()))
+            savePortalCreds()
+        }
+    }
+    fun savePortalCreds() { portalCredsFile.writeText(gson.toJson(portalCreds)) }
+    fun getPortalCreds() = portalCreds!!
+    fun setPortalTotp(secret: String) { portalCreds = portalCreds!!.copy(totpSecret = secret); savePortalCreds() }
+    fun changePortalPassword(newPassword: String) {
+        val hash = org.mindrot.jbcrypt.BCrypt.hashpw(newPassword, org.mindrot.jbcrypt.BCrypt.gensalt())
+        portalCreds = portalCreds!!.copy(passwordHash = hash)
+        savePortalCreds()
+    }
+    fun changePortalUsername(newUsername: String) {
+        portalCreds = portalCreds!!.copy(username = newUsername)
+        savePortalCreds()
+    }
+    fun verifyPortalLogin(username: String, password: String, totp: String): Boolean {
+        val creds = portalCreds ?: return false
+        if (username != creds.username) return false
+        if (!org.mindrot.jbcrypt.BCrypt.checkpw(password, creds.passwordHash)) return false
+        if (creds.totpSecret.isNotBlank()) {
+            val verifier = dev.samstevens.totp.code.DefaultCodeVerifier(dev.samstevens.totp.code.DefaultCodeGenerator(), dev.samstevens.totp.time.SystemTimeProvider())
+            if (!verifier.isValidCode(creds.totpSecret, totp)) return false
+        }
+        return true
+    }
+
     // Third-party API keys: stored in data/keys.json
     private val apiKeys = ConcurrentHashMap<String, String>()
     private val keysFile = File(dataDir, "keys.json")
@@ -184,6 +228,7 @@ fun main(args: Array<String>) {
     server.loadUsers()
     server.loadWebhooks()
     server.loadKeys()
+    server.loadPortalCreds()
     server.start()
 }
 
@@ -193,13 +238,15 @@ class LoginServlet : HttpServlet() {
     override fun doGet(req: HttpServletRequest, resp: HttpServletResponse) {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
         if (ctx.isBlocked(req.remoteAddr)) { resp.status = 429; resp.writer.write("Too many failed attempts. Try again later."); return }
-        // Prune expired tokens (>10min)
         val now = System.currentTimeMillis()
         csrfTokens.entries.removeIf { now - it.value > 600_000 }
         val csrf = UUID.randomUUID().toString()
         csrfTokens[csrf] = now
+        val needsTotp = ctx.getPortalCreds().totpSecret.isNotBlank()
         resp.contentType = "text/html; charset=utf-8"
-        resp.writer.write(LOGIN_HTML.replace("<!--CSRF-->", "<input type=\"hidden\" name=\"csrf\" value=\"$csrf\">"))
+        resp.writer.write(LOGIN_HTML
+            .replace("<!--CSRF-->", "<input type=\"hidden\" name=\"csrf\" value=\"$csrf\">")
+            .replace("<!--TOTP-->", if (needsTotp) "<input type=\"text\" name=\"totp\" placeholder=\"TOTP Code\" autocomplete=\"one-time-code\" inputmode=\"numeric\" maxlength=\"6\">" else ""))
     }
     override fun doPost(req: HttpServletRequest, resp: HttpServletResponse) {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
@@ -207,17 +254,19 @@ class LoginServlet : HttpServlet() {
         if (ctx.isBlocked(ip)) { resp.status = 429; resp.writer.write("Too many failed attempts. Try again later."); return }
         val csrf = req.getParameter("csrf") ?: ""
         if (csrf.isEmpty() || csrfTokens.remove(csrf) == null) { resp.status = 403; resp.contentType = "text/html; charset=utf-8"; resp.writer.write(LOGIN_HTML.replace("<!--ERROR-->", "<p style='color:#f44336'>Session expired. Please refresh.</p>")); return }
-        val pw = req.getParameter("password") ?: ""
-        if (pw == ctx.getGateway().getConfig().apiKey) {
+        val username = req.getParameter("username") ?: ""
+        val password = req.getParameter("password") ?: ""
+        val totp = req.getParameter("totp") ?: ""
+        if (ctx.verifyPortalLogin(username, password, totp)) {
             val token = UUID.randomUUID().toString()
-            ctx.sessions[token] = GatewayServer.SessionInfo(token, "admin")
-            resp.addCookie(Cookie("gateway_session", token).apply { path = "/"; maxAge = 86400 * 7; isHttpOnly = true })
-            ctx.audit("admin", "login", "from $ip")
+            ctx.sessions[token] = GatewayServer.SessionInfo(token, username)
+            resp.addCookie(Cookie("gateway_session", token).apply { path = "/"; maxAge = 86400 * 7; isHttpOnly = true; secure = true })
+            ctx.audit(username, "login", "from $ip")
             resp.sendRedirect("/portal/")
         } else {
             ctx.recordFailedLogin(ip)
-            ctx.audit("unknown", "login_failed", "from $ip")
-            resp.contentType = "text/html; charset=utf-8"; resp.status = 401; resp.writer.write(LOGIN_HTML.replace("<!--ERROR-->", "<p style='color:#f44336'>Invalid API key</p>"))
+            ctx.audit(username.ifBlank { "unknown" }, "login_failed", "from $ip")
+            resp.contentType = "text/html; charset=utf-8"; resp.status = 401; resp.writer.write(LOGIN_HTML.replace("<!--ERROR-->", "<p style='color:#f44336'>Invalid credentials</p>"))
         }
     }
 }
@@ -285,6 +334,42 @@ class ConfigServlet : HttpServlet() {
             path.matches(Regex("providers/.+/models/remove")) && req.method == "POST" -> removeProviderModel(ctx, req, resp, path.removePrefix("providers/").removeSuffix("/models/remove"))
             path == "providers" && req.method == "POST" -> addProvider(ctx, req, resp)
             path == "loadmodels" && req.method == "POST" -> loadModels(ctx, req, resp)
+            path == "portal-auth" && req.method == "GET" -> { resp.writer.write(jsonResp("totpEnabled" to ctx.getPortalCreds().totpSecret.isNotBlank(), "username" to ctx.getPortalCreds().username)) }
+            path == "portal-auth" && req.method == "PUT" -> {
+                val j = JsonParser.parseString(req.reader.readText()).asJsonObject
+                j.get("username")?.asString?.let { u ->
+                    if (u.isNotBlank()) ctx.changePortalUsername(u)
+                    ctx.audit(ctx.resolveUser(req), "username_changed", u)
+                }
+                j.get("password")?.asString?.let { pw ->
+                    if (pw.length < 4) throw IllegalArgumentException("Password too short")
+                    ctx.changePortalPassword(pw)
+                    ctx.audit(ctx.resolveUser(req), "password_changed", "")
+                }
+                resp.writer.write(jsonResp("status" to "ok"))
+            }
+            path == "portal-auth/totp-setup" && req.method == "POST" -> {
+                val secret = dev.samstevens.totp.secret.DefaultSecretGenerator().generate()
+                req.session.setAttribute("pendingTotpSecret", secret)
+                resp.writer.write(jsonResp("secret" to secret))
+            }
+            path == "portal-auth/totp-verify" && req.method == "POST" -> {
+                val j = JsonParser.parseString(req.reader.readText()).asJsonObject
+                val code = j.get("code")?.asString ?: ""
+                val secret = req.session.getAttribute("pendingTotpSecret") as? String ?: throw IllegalArgumentException("No pending TOTP setup")
+                val verifier = dev.samstevens.totp.code.DefaultCodeVerifier(dev.samstevens.totp.code.DefaultCodeGenerator(), dev.samstevens.totp.time.SystemTimeProvider())
+                if (verifier.isValidCode(secret, code)) {
+                    ctx.setPortalTotp(secret)
+                    req.session.removeAttribute("pendingTotpSecret")
+                    ctx.audit(ctx.resolveUser(req), "totp_enabled", "")
+                    resp.writer.write(jsonResp("status" to "ok"))
+                } else { resp.status = 400; resp.writer.write(errResp("Invalid code", 400)) }
+            }
+            path == "portal-auth/totp-disable" && req.method == "POST" -> {
+                ctx.setPortalTotp("")
+                ctx.audit(ctx.resolveUser(req), "totp_disabled", "")
+                resp.writer.write(jsonResp("status" to "ok"))
+            }
             else -> { resp.status = 404; resp.writer.write(errResp("Not found", 404)) }
         } } catch (e: Exception) { resp.status = 500; resp.writer.write(errResp(e.message ?: "Internal error")) }
     }
@@ -370,7 +455,7 @@ class ConfigServlet : HttpServlet() {
         ServerLog.add("Removed model $modelId from $name")
         resp.writer.write(jsonResp("status" to "ok", "message" to "Removed $modelId"))
     }
-    private fun cors(resp: HttpServletResponse) { resp.setHeader("Access-Control-Allow-Origin", "*"); resp.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS"); resp.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization") }
+    private fun cors(resp: HttpServletResponse) { resp.setHeader("Access-Control-Allow-Origin", "https://inf.xnet.ngo"); resp.setHeader("Access-Control-Allow-Credentials", "true"); resp.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS"); resp.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization") }
 }
 
 class ApiServlet : HttpServlet() {
@@ -563,7 +648,7 @@ class UsersServlet : HttpServlet() {
     override fun service(req: HttpServletRequest, resp: HttpServletResponse) {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
         if (!ctx.isAuthorized(req)) { resp.status = 401; return }
-        if (ctx.resolveUser(req) != "admin") { resp.status = 403; resp.contentType = "application/json"; resp.writer.write(errResp("Admin only", 403)); return }
+        if (ctx.resolveUser(req) != "admin" && ctx.resolveUser(req) != ctx.getPortalCreds().username) { resp.status = 403; resp.contentType = "application/json"; resp.writer.write(errResp("Admin only", 403)); return }
         resp.contentType = "application/json"
         val path = req.pathInfo?.removePrefix("/") ?: ""
         when {
@@ -628,7 +713,7 @@ class KeysServlet : HttpServlet() {
     override fun service(req: HttpServletRequest, resp: HttpServletResponse) {
         val ctx = req.servletContext.getAttribute("gateway") as GatewayServer
         if (!ctx.isAuthorized(req)) { resp.status = 401; resp.contentType = "application/json"; resp.writer.write(errResp("Unauthorized", 401)); return }
-        if (ctx.resolveUser(req) != "admin") { resp.status = 403; resp.contentType = "application/json"; resp.writer.write(errResp("Admin only", 403)); return }
+        if (ctx.resolveUser(req) != "admin" && ctx.resolveUser(req) != ctx.getPortalCreds().username) { resp.status = 403; resp.contentType = "application/json"; resp.writer.write(errResp("Admin only", 403)); return }
         resp.contentType = "application/json"; resp.setHeader("Access-Control-Allow-Origin", "*")
         if (req.method == "OPTIONS") { resp.setHeader("Access-Control-Allow-Methods", "GET,PUT,DELETE,OPTIONS"); resp.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization"); resp.status = 200; return }
         val path = req.pathInfo?.removePrefix("/") ?: ""
