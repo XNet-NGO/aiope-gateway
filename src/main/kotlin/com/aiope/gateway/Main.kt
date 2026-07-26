@@ -61,7 +61,7 @@ class GatewayServer(private val port: Int, private val dataDir: File) {
     fun checkRate(ip: String): Boolean {
         val now = System.currentTimeMillis()
         val window = requestCounts.getOrPut(ip) { mutableListOf() }
-        synchronized(window) { window.removeAll { now - it > 60_000 }; window.add(now); return window.size <= 120 } // 120 req/min per IP
+        synchronized(window) { window.removeAll { now - it > 60_000 }; window.add(now); return window.size <= 60 } // 120 req/min per IP
     }
 
     // Brute force protection (liberal)

@@ -1,0 +1,10 @@
+FROM gradle:8.3-jdk17 AS builder
+WORKDIR /app
+COPY . .
+RUN gradle shadowJar --no-daemon
+
+FROM amazoncorretto:17-alpine
+WORKDIR /opt/gateway
+COPY --from=builder /app/build/libs/gateway-server-all.jar gateway.jar
+ENTRYPOINT ["java", "-Xmx256m", "-jar", "gateway.jar"]
+CMD ["8082", "/opt/gateway/data"]
