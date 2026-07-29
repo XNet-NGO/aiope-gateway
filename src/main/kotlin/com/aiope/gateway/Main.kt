@@ -494,6 +494,7 @@ class ApiServlet : HttpServlet() {
         val ts = System.currentTimeMillis() / 1000; val a = JsonArray()
         val all = ctx.getGateway().getAllProviders()
         val parentNames = all.filter { it.name.contains("/") }.map { it.name.substringBefore("/") }.toSet()
+        val enabledParents = all.filter { !it.name.contains("/") && it.enabled }.map { it.name }.toSet()
         val seen = mutableSetOf<String>()
         // Resolve user's allowed providers
         val auth = req.getHeader("Authorization")
@@ -501,6 +502,8 @@ class ApiServlet : HttpServlet() {
         val userProviders = if (bearer != null && bearer != ctx.getGateway().getConfig().apiKey) ctx.findUser(bearer)?.providers ?: emptyList() else emptyList()
         all.filter { it.enabled && it.model.isNotBlank() }.forEach { p ->
             if (!p.name.contains("/") && p.name in parentNames) return@forEach
+            // Skip routes whose parent provider is disabled or missing
+            if (p.name.contains("/") && p.name.substringBefore("/") !in enabledParents) return@forEach
             if (userProviders.isNotEmpty() && userProviders.none { p.name == it || p.name.startsWith("$it/") }) return@forEach
             val id = p.displayId.ifEmpty { "${p.name.substringBefore("/")}/${p.model.replace("/", "-")}" }
             if (!seen.add(id.lowercase())) return@forEach
